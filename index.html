@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7f2">
+    <meta name="description" content="게임 스킬 트리처럼 탐색하는 서현고 학생 정보 지도입니다.">
+    <title>서현고 정보 지도</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="content.js" defer></script>
+    <script src="supabase-config.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="#top" aria-label="서현고 정보 지도 홈">
+          <span class="brand-mark" aria-hidden="true">S</span>
+          <span class="brand-copy">
+            <strong>서현고</strong>
+            <span>STUDENT INFO MAP</span>
+          </span>
+        </a>
+
+        <div class="header-tools">
+          <div class="search-wrap">
+            <label class="visually-hidden" for="site-search">정보 검색</label>
+            <span class="search-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 4.5 4.5"></path></svg>
+            </span>
+            <input id="site-search" type="search" placeholder="학교 정보 검색" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+            <kbd>/</kbd>
+            <div id="search-results" class="search-results" role="listbox" aria-label="검색 결과" hidden></div>
+          </div>
+          <span class="unofficial-badge"><span></span> 학생 제작 정보 사이트</span>
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" aria-label="밤 모드로 전환">
+            <span class="theme-icon" id="theme-icon" aria-hidden="true">☾</span>
+            <span id="theme-label">밤 모드</span>
+          </button>
+          <div class="auth-actions">
+            <span class="auth-user" id="auth-user" hidden></span>
+            <button class="login-button" id="login-button" type="button">Google 로그인</button>
+            <button class="logout-button" id="logout-button" type="button" hidden>로그아웃</button>
+          </div>
+        </div>
+      </header>
+
+      <main id="top">
+        <section class="explorer-layout" aria-label="서현고 정보 탐색">
+          <section class="tree-card" aria-label="정보 스킬 트리">
+            <div class="map-viewport" id="map-viewport" tabindex="0" aria-label="가운데 서현고에서 주제별로 탐색하는 전체 화면 정보 지도">
+              <div class="map-stage" id="map-stage">
+                <svg class="tree-lines" id="tree-lines" aria-hidden="true"></svg>
+                <button class="root-node map-node" type="button" data-node-id="home" aria-label="서현고 정보 지도 홈 열기">
+                  <span class="root-node-halo"></span>
+                  <span class="root-node-mark" aria-hidden="true">S</span>
+                  <span class="root-node-title">서현고</span>
+                  <span class="root-node-caption">정보의 중심</span>
+                </button>
+                <div class="branches-layer" id="branches-layer" aria-label="정보 주제와 세부 정보"></div>
+              </div>
+            </div>
+
+            <div class="mobile-map-list" id="mobile-map-list" aria-label="정보 주제 목록"></div>
+            <div class="interaction-hint"><span aria-hidden="true">✦</span> 더블 클릭 또는 우클릭으로 노드를 접고 펼칠 수 있어요</div>
+          </section>
+
+          <aside class="detail-card" id="detail-card" aria-live="polite" aria-label="선택한 정보 상세" aria-hidden="true">
+            <div class="detail-topline">
+              <span class="detail-kicker"><span class="detail-kicker-icon" aria-hidden="true">✦</span> INFORMATION NODE</span>
+              <button class="detail-close" id="detail-close" type="button" aria-label="상세 정보 닫기">×</button>
+            </div>
+            <div class="breadcrumb" id="breadcrumb">정보 지도 <span>/</span> 홈</div>
+            <div class="detail-heading">
+              <div class="detail-number" id="detail-number">00</div>
+              <div>
+                <h2 id="detail-title">서현고 정보</h2>
+                <p id="detail-summary">학교생활에 필요한 정보를 주제별로 모으는 정보 지도입니다.</p>
+              </div>
+            </div>
+            <div class="detail-divider"></div>
+            <div class="detail-content" id="detail-content"></div>
+            <section class="articles-panel" aria-label="등록된 글">
+              <div class="articles-heading">
+                <h3>등록된 안내</h3>
+                <span id="article-count">0</span>
+              </div>
+              <div class="article-list" id="article-list" aria-live="polite"></div>
+              <div class="writer-tools" id="writer-tools" hidden>
+                <button class="new-article-button" id="new-article-button" type="button">＋ 이 주제에 글 쓰기</button>
+              </div>
+              <form class="article-form" id="article-form" hidden>
+                <label for="article-title">제목</label>
+                <input id="article-title" name="title" maxlength="160" required>
+                <label for="article-body">내용</label>
+                <textarea id="article-body" name="body" rows="6" maxlength="20000" required></textarea>
+                <label for="article-source">출처 링크 <span>(선택)</span></label>
+                <input id="article-source" name="source_url" type="url" placeholder="https://...">
+                <label class="publish-toggle"><input id="article-published" name="published" type="checkbox" checked> 저장 후 공개</label>
+                <div class="article-form-actions">
+                  <button class="save-article-button" type="submit">저장</button>
+                  <button class="cancel-article-button" id="cancel-article-button" type="button">취소</button>
+                </div>
+              </form>
+            </section>
+            <div class="detail-meta">
+              <div class="meta-item">
+                <span class="meta-label">출처</span>
+                <p id="detail-source">공식 자료를 확인한 뒤 링크를 추가해 주세요.</p>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">마지막 업데이트</span>
+                <p id="detail-updated">등록 전</p>
+              </div>
+            </div>
+            <div class="detail-footnote"><span aria-hidden="true">ⓘ</span> 실제 안내와 출처는 확인 후 등록해 주세요.</div>
+          </aside>
+        </section>
+
+        <div class="app-toast" id="app-toast" role="status" aria-live="polite" hidden></div>
+      </main>
+    </div>
+  </body>
+</html>
