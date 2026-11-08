@@ -1,12 +1,6 @@
 -- Public articles with private, database-enforced writer authorization.
--- Configure the school domain and writer addresses in the private tables below.
 
 create schema if not exists private;
-
-create table if not exists private.school_settings (
-  id boolean primary key default true check (id),
-  email_domain text not null check (email_domain = lower(email_domain))
-);
 
 create table if not exists private.writer_allowlist (
   email text primary key check (email = lower(email))
@@ -15,7 +9,7 @@ create table if not exists private.writer_allowlist (
 revoke all on schema private from public, anon, authenticated;
 revoke all on all tables in schema private from public, anon, authenticated;
 
-create or replace function public.is_school_writer()
+create or replace function public.is_authorized_writer()
 returns boolean
 language sql
 stable
@@ -27,15 +21,13 @@ as $$
     from auth.users as u
     join private.writer_allowlist as w
       on lower(w.email) = lower(u.email)
-    cross join private.school_settings as s
     where u.id = (select auth.uid())
       and u.email_confirmed_at is not null
-      and lower(u.email) like '%@' || lower(s.email_domain)
   );
 $$;
 
-revoke all on function public.is_school_writer() from public, anon;
-grant execute on function public.is_school_writer() to authenticated;
+revoke all on function public.is_authorized_writer() from public, anon;
+grant execute on function public.is_authorized_writer() to authenticated;
 
 create table if not exists public.school_articles (
   id uuid primary key default gen_random_uuid(),
@@ -80,36 +72,40 @@ create policy "Public can read published school articles"
   on public.school_articles for select to anon
   using (published);
 
+drop policy if exists "Authorized school writers can create articles" on public.school_articles;
+drop policy if exists "Authorized school writers can update articles" on public.school_articles;
+drop policy if exists "Authorized school writers can delete articles" on public.school_articles;
+drop policy if exists "Signed-in users can read published or authorized drafts" on public.school_articles;
+drop function if exists public.is_school_writer();
+drop table if exists private.school_settings;
+
 drop policy if exists "Signed-in users can read published or authorized drafts" on public.school_articles;
 create policy "Signed-in users can read published or authorized drafts"
   on public.school_articles for select to authenticated
-  using (published or (select public.is_school_writer()));
+  using (published or (select public.is_authorized_writer()));
 
+drop policy if exists "Authorized writers can create articles" on public.school_articles;
 drop policy if exists "Authorized school writers can create articles" on public.school_articles;
-create policy "Authorized school writers can create articles"
+create policy "Authorized writers can create articles"
   on public.school_articles for insert to authenticated
   with check (
-    (select public.is_school_writer())
+    (select public.is_authorized_writer())
     and author_id = (select auth.uid())
   );
 
+drop policy if exists "Authorized writers can update articles" on public.school_articles;
 drop policy if exists "Authorized school writers can update articles" on public.school_articles;
-create policy "Authorized school writers can update articles"
+create policy "Authorized writers can update articles"
   on public.school_articles for update to authenticated
-  using ((select public.is_school_writer()))
-  with check ((select public.is_school_writer()));
+  using ((select public.is_authorized_writer()))
+  with check ((select public.is_authorized_writer()));
 
+drop policy if exists "Authorized writers can delete articles" on public.school_articles;
 drop policy if exists "Authorized school writers can delete articles" on public.school_articles;
-create policy "Authorized school writers can delete articles"
+create policy "Authorized writers can delete articles"
   on public.school_articles for delete to authenticated
-  using ((select public.is_school_writer()));
+  using ((select public.is_authorized_writer()));
 
--- Set the real school domain and add approved writers in the Supabase SQL Editor.
--- Example:
--- insert into private.school_settings (id, email_domain)
--- values (true, 'school.example')
--- on conflict (id) do update set email_domain = excluded.email_domain;
---
--- insert into private.writer_allowlist (email)
--- values ('writer@school.example')
--- on conflict (email) do nothing;
+-- Add an exact Google-account email address to permit article authoring.
+-- Example: insert into private.writer_allowlist (email)
+-- values ('writer@example.com') on conflict (email) do nothing;

@@ -493,15 +493,6 @@
     toastTimer = window.setTimeout(function () { appToast.hidden = true; }, 5200);
   }
 
-  function configuredSchoolDomain() {
-    return String(supabaseConfig.schoolEmailDomain || "").trim().toLowerCase().replace(/^@/, "");
-  }
-
-  function isSchoolEmail(email) {
-    const domain = configuredSchoolDomain();
-    return Boolean(domain && email && email.toLowerCase().endsWith("@" + domain));
-  }
-
   function formatArticleDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "날짜 미정";
@@ -623,7 +614,7 @@
 
   function openArticleEditor(article) {
     if (!isWriter || !currentUser) {
-      showToast("작성 권한이 있는 학교 계정으로 로그인해 주세요.");
+      showToast("글 작성 권한이 있는 Google 계정으로 로그인해 주세요.");
       return;
     }
     editingArticleId = article ? article.id : null;
@@ -658,16 +649,7 @@
       loadArticles(selectedId);
       return;
     }
-    if (!isSchoolEmail(user.email || "")) {
-      setSignedInUser(null, false);
-      await supabaseClient.auth.signOut();
-      if (token === authStateToken) {
-        showToast("등록된 학교 이메일 계정으로만 로그인할 수 있어요.");
-        loadArticles(selectedId);
-      }
-      return;
-    }
-    const result = await supabaseClient.rpc("is_school_writer");
+    const result = await supabaseClient.rpc("is_authorized_writer");
     if (token !== authStateToken) return;
     setSignedInUser(user, !result.error && result.data === true);
     if (result.error) showToast("로그인은 됐지만 작성 권한을 확인하지 못했어요.");
@@ -676,7 +658,6 @@
   }
 
   function initializeBackend() {
-    const domain = configuredSchoolDomain();
     const hasConfig = Boolean(supabaseConfig.url && supabaseConfig.anonKey);
     if (!hasConfig || !window.supabase || typeof window.supabase.createClient !== "function") {
       loginButton.addEventListener("click", function () {
@@ -689,10 +670,6 @@
 
     supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
     loginButton.addEventListener("click", async function () {
-      if (!domain) {
-        showToast("로그인을 켜려면 supabase-config.js에 학교 이메일 도메인을 먼저 설정해 주세요.");
-        return;
-      }
       if (window.location.protocol === "file:") {
         showToast("Google 로그인은 localhost 또는 HTTPS 주소에서 열어야 해요.");
         return;
@@ -701,7 +678,7 @@
         provider: "google",
         options: {
           redirectTo: window.location.href,
-          queryParams: { hd: domain, prompt: "select_account" }
+          queryParams: { prompt: "select_account" }
         }
       });
       if (result.error) showToast("로그인 화면을 열지 못했어요. OAuth 설정을 확인해 주세요.");
