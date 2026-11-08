@@ -677,7 +677,7 @@
 
   function initializeBackend() {
     const domain = configuredSchoolDomain();
-    const hasConfig = Boolean(supabaseConfig.url && supabaseConfig.anonKey && domain);
+    const hasConfig = Boolean(supabaseConfig.url && supabaseConfig.anonKey);
     if (!hasConfig || !window.supabase || typeof window.supabase.createClient !== "function") {
       loginButton.addEventListener("click", function () {
         showToast("로그인을 켜려면 AUTH_SETUP.md의 Supabase와 학교 도메인 설정을 먼저 채워 주세요.");
@@ -689,6 +689,10 @@
 
     supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
     loginButton.addEventListener("click", async function () {
+      if (!domain) {
+        showToast("로그인을 켜려면 supabase-config.js에 학교 이메일 도메인을 먼저 설정해 주세요.");
+        return;
+      }
       if (window.location.protocol === "file:") {
         showToast("Google 로그인은 localhost 또는 HTTPS 주소에서 열어야 해요.");
         return;
