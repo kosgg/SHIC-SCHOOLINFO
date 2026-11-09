@@ -482,14 +482,28 @@
       content.appendChild(items);
     }
 
-    const sourceUrl = isRoot ? "" : (node.sourceUrl || category.sourceUrl || "");
-    if (sourceUrl) {
-      const link = document.createElement("a");
-      link.href = sourceUrl;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = "출처 페이지 열기 ↗";
-      source.replaceChildren(link);
+    const sourceOwner = node.kind === "topic" ? node : category;
+    const sourceEntries = isRoot ? [] : (
+      (Array.isArray(sourceOwner.sources) && sourceOwner.sources.length ? sourceOwner.sources : null) ||
+      (sourceOwner.sourceUrl ? [{ label: "출처 페이지", url: sourceOwner.sourceUrl }] : null) ||
+      (Array.isArray(category.sources) && category.sources.length ? category.sources : null) ||
+      (category.sourceUrl ? [{ label: "출처 페이지", url: category.sourceUrl }] : [])
+    );
+    const validSources = sourceEntries.map(function (item) {
+      return { label: item.label || "출처 페이지", url: safeHttpUrl(item.url || item.sourceUrl) };
+    }).filter(function (item) { return Boolean(item.url); });
+    if (validSources.length) {
+      const links = document.createDocumentFragment();
+      validSources.forEach(function (item, index) {
+        if (index) links.appendChild(document.createTextNode(" · "));
+        const link = document.createElement("a");
+        link.href = item.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = item.label + " ↗";
+        links.appendChild(link);
+      });
+      source.replaceChildren(links);
     } else {
       source.textContent = "공식 자료를 확인한 뒤 링크를 추가해 주세요.";
     }
