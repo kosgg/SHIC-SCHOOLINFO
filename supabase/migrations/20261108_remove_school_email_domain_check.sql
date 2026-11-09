@@ -49,4 +49,3 @@ create policy "Authorized writers can delete articles"
   using ((select public.is_authorized_writer()));
 
 drop function if exists public.is_school_writer();
-drop table if exists private.school_settings;

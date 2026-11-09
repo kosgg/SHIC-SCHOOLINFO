@@ -42,6 +42,7 @@
             <span class="auth-user" id="auth-user" hidden></span>
             <button class="login-button" id="login-button" type="button">Google 로그인</button>
             <button class="logout-button" id="logout-button" type="button" hidden>로그아웃</button>
+            <button class="admin-settings-button" id="admin-settings-button" type="button" hidden>글쓰기 설정</button>
           </div>
         </div>
       </header>
@@ -87,6 +88,7 @@
                 <span id="article-count">0</span>
               </div>
               <div class="article-list" id="article-list" aria-live="polite"></div>
+              <p class="writing-status" id="writing-status" hidden></p>
               <div class="writer-tools" id="writer-tools" hidden>
                 <button class="new-article-button" id="new-article-button" type="button">＋ 이 주제에 글 쓰기</button>
               </div>
@@ -120,6 +122,28 @@
 
         <div class="app-toast" id="app-toast" role="status" aria-live="polite" hidden></div>
       </main>
+
+      <dialog class="admin-settings-dialog" id="admin-settings-dialog" aria-labelledby="admin-settings-title">
+        <div class="admin-dialog-heading">
+          <div>
+            <span class="admin-dialog-kicker">ADMIN CONTROL</span>
+            <h2 id="admin-settings-title">글쓰기 기간 설정</h2>
+          </div>
+          <button class="admin-dialog-close" id="admin-settings-close" type="button" aria-label="관리자 설정 닫기">×</button>
+        </div>
+        <p class="admin-dialog-status" id="writing-period-status" aria-live="polite">설정을 불러오는 중이에요.</p>
+        <form id="admin-writing-form" class="admin-writing-form">
+          <label for="writing-start-at">작성 시작 시각 <span>(한국시간)</span></label>
+          <input id="writing-start-at" type="datetime-local" step="60" required>
+          <label for="writing-end-at">작성 종료 시각 <span>(한국시간)</span></label>
+          <input id="writing-end-at" type="datetime-local" step="60" required>
+          <div class="admin-dialog-actions">
+            <button class="admin-save-button" type="submit">기간 저장</button>
+            <button class="admin-toggle-button" id="writing-toggle-button" type="button">작성 허용 시작</button>
+          </div>
+        </form>
+        <p class="admin-dialog-note">기간이 비어 있거나 끝나면 글을 쓸 수 없어요. 모든 시각은 Asia/Seoul 기준으로 적용돼요.</p>
+      </dialog>
     </div>
   </body>
 </html>

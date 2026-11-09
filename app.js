@@ -25,6 +25,15 @@
   const supabaseConfig = window.SEOHYUN_SUPABASE_CONFIG || {};
   const loginButton = document.getElementById("login-button");
   const logoutButton = document.getElementById("logout-button");
+  const adminSettingsButton = document.getElementById("admin-settings-button");
+  const adminSettingsDialog = document.getElementById("admin-settings-dialog");
+  const adminWritingForm = document.getElementById("admin-writing-form");
+  const writingStartInput = document.getElementById("writing-start-at");
+  const writingEndInput = document.getElementById("writing-end-at");
+  const writingPeriodStatus = document.getElementById("writing-period-status");
+  const writingToggleButton = document.getElementById("writing-toggle-button");
+  const adminSettingsClose = document.getElementById("admin-settings-close");
+  const writingStatus = document.getElementById("writing-status");
   const authUserLabel = document.getElementById("auth-user");
   const articleList = document.getElementById("article-list");
   const articleCount = document.getElementById("article-count");
@@ -39,7 +48,11 @@
   let selectedId = rootNode.id;
   let supabaseClient = null;
   let currentUser = null;
+  let isGoogleUser = false;
   let isWriter = false;
+  let isAdmin = false;
+  let writingIsOpen = false;
+  let writingSettings = null;
   let currentArticles = [];
   let editingArticleId = null;
   let articleLoadToken = 0;
@@ -493,10 +506,64 @@
     toastTimer = window.setTimeout(function () { appToast.hidden = true; }, 5200);
   }
 
+  function parseKstDateTime(value) {
+    if (!value) return null;
+    const date = new Date(value + ":00+09:00");
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  function formatKstDateTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(date).reduce(function (result, part) {
+      result[part.type] = part.value;
+      return result;
+    }, {});
+    return parts.year + "-" + parts.month + "-" + parts.day + "T" + parts.hour + ":" + parts.minute;
+  }
+
+  function formatKstLabel(value) {
+    if (!value) return "미설정";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "미설정";
+    return new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).format(date) + " (한국시간)";
+  }
+
+  function getWritingPeriodFromInputs() {
+    const startsAt = parseKstDateTime(writingStartInput.value);
+    const endsAt = parseKstDateTime(writingEndInput.value);
+    if (!startsAt || !endsAt) {
+      showToast("한국시간 기준 시작 시각과 종료 시각을 모두 입력해 주세요.");
+      return null;
+    }
+    if (new Date(startsAt).getTime() >= new Date(endsAt).getTime()) {
+      showToast("종료 시각은 시작 시각보다 뒤여야 해요.");
+      return null;
+    }
+    return { starts_at: startsAt, ends_at: endsAt };
+  }
+
   function formatArticleDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "날짜 미정";
-    return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" }).format(date);
+    return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric" }).format(date);
   }
 
   function safeHttpUrl(value) {
@@ -558,7 +625,7 @@
         sourceLink.textContent = "출처 열기 ↗";
         card.appendChild(sourceLink);
       }
-      if (isWriter) {
+      if (isWriter && currentUser && article.author_id === currentUser.id) {
         const actions = document.createElement("div");
         actions.className = "article-card-actions";
         const edit = document.createElement("button");
@@ -613,8 +680,12 @@
   }
 
   function openArticleEditor(article) {
-    if (!isWriter || !currentUser) {
-      showToast("글 작성 권한이 있는 Google 계정으로 로그인해 주세요.");
+    if (!currentUser) {
+      showToast("글을 쓰려면 Google 로그인을 해 주세요.");
+      return;
+    }
+    if (!isWriter) {
+      showToast("관리자가 글쓰기를 허용한 기간에만 작성할 수 있어요.");
       return;
     }
     editingArticleId = article ? article.id : null;
@@ -627,17 +698,83 @@
     document.getElementById("article-title").focus();
   }
 
-  function setSignedInUser(user, writer) {
+  function applyWritingSettings(settings) {
+    writingSettings = settings || { starts_at: null, ends_at: null, enabled: false, is_open: false };
+    writingIsOpen = Boolean(writingSettings.is_open);
+    writingStartInput.value = formatKstDateTime(writingSettings.starts_at);
+    writingEndInput.value = formatKstDateTime(writingSettings.ends_at);
+    writingToggleButton.textContent = writingSettings.enabled ? "작성 허용 중지" : "작성 허용 시작";
+    if (writingSettings.is_open) {
+      writingPeriodStatus.textContent = "현재 작성 허용 중이에요.";
+    } else if (writingSettings.enabled && writingSettings.starts_at && new Date(writingSettings.starts_at) > new Date()) {
+      writingPeriodStatus.textContent = "예약된 시작 시각: " + formatKstLabel(writingSettings.starts_at);
+    } else if (writingSettings.enabled && writingSettings.ends_at && new Date(writingSettings.ends_at) <= new Date()) {
+      writingPeriodStatus.textContent = "설정한 작성 기간이 끝났어요.";
+    } else {
+      writingPeriodStatus.textContent = "현재 작성이 중지되어 있어요.";
+    }
+  }
+
+  async function loadAdminWritingSettings(openDialog) {
+    if (!isAdmin || !supabaseClient) return;
+    const result = await supabaseClient.rpc("get_article_writing_settings");
+    if (result.error) {
+      showToast("관리자 기간 설정을 불러오지 못했어요.");
+      return;
+    }
+    applyWritingSettings(result.data);
+    setSignedInUser(currentUser, writingIsOpen && isGoogleUser, true);
+    loadArticles(selectedId);
+    if (openDialog && !adminSettingsDialog.open) adminSettingsDialog.showModal();
+  }
+
+  function getSavedPeriod() {
+    return {
+      starts_at: writingSettings && writingSettings.starts_at ? writingSettings.starts_at : null,
+      ends_at: writingSettings && writingSettings.ends_at ? writingSettings.ends_at : null
+    };
+  }
+
+  async function saveWritingSettings(period, enabled) {
+    if (!isAdmin || !supabaseClient) return false;
+    const result = await supabaseClient.rpc("set_article_writing_settings", {
+      p_starts_at: period.starts_at,
+      p_ends_at: period.ends_at,
+      p_enabled: enabled
+    });
+    if (result.error) {
+      showToast("기간을 저장하지 못했어요. 시작·종료 시각을 확인해 주세요.");
+      return false;
+    }
+    applyWritingSettings(result.data);
+    setSignedInUser(currentUser, writingIsOpen && isGoogleUser, true);
+    loadArticles(selectedId);
+    return true;
+  }
+
+  function setSignedInUser(user, writer, admin) {
     currentUser = user || null;
-    isWriter = Boolean(user && writer);
+    isWriter = Boolean(user && writer && isGoogleUser);
+    isAdmin = Boolean(user && admin);
     if (authUserLabel) {
       authUserLabel.textContent = user ? (user.email || "로그인됨") : "";
       authUserLabel.hidden = !user;
     }
     loginButton.hidden = Boolean(user);
     logoutButton.hidden = !user;
+    adminSettingsButton.hidden = !isAdmin;
     writerTools.hidden = !isWriter;
-    if (!isWriter) articleForm.hidden = true;
+    if (writingStatus) {
+      writingStatus.hidden = !user;
+      writingStatus.textContent = writingIsOpen
+        ? "현재 글쓰기 기간이에요. 로그인한 사용자는 안내 글을 작성할 수 있어요."
+        : "현재 글쓰기 기간이 아니에요. 안내는 계속 읽을 수 있어요.";
+    }
+    if (!isWriter) {
+      articleForm.hidden = true;
+      editingArticleId = null;
+    }
+    if (!user && adminSettingsDialog.open) adminSettingsDialog.close();
   }
 
   let authStateToken = 0;
@@ -645,26 +782,50 @@
     const token = ++authStateToken;
     const user = session && session.user ? session.user : null;
     if (!user) {
-      setSignedInUser(null, false);
+      isGoogleUser = false;
+      writingIsOpen = false;
+      writingSettings = null;
+      setSignedInUser(null, false, false);
       loadArticles(selectedId);
       return;
     }
-    const result = await supabaseClient.rpc("is_authorized_writer");
+    const results = await Promise.all([
+      supabaseClient.rpc("is_article_admin"),
+      supabaseClient.rpc("is_article_writing_open"),
+      supabaseClient.rpc("is_google_authenticated_user")
+    ]);
     if (token !== authStateToken) return;
-    setSignedInUser(user, !result.error && result.data === true);
-    if (result.error) showToast("로그인은 됐지만 작성 권한을 확인하지 못했어요.");
-    else if (!result.data) showToast("열람 로그인 완료. 글 작성 권한은 등록된 작성자에게만 있어요.");
+    isAdmin = !results[0].error && results[0].data === true;
+    writingIsOpen = !results[1].error && results[1].data === true;
+    isGoogleUser = !results[2].error && results[2].data === true;
+    setSignedInUser(user, writingIsOpen && isGoogleUser, isAdmin);
+    if (results[0].error || results[1].error || results[2].error) showToast("로그인은 됐지만 글쓰기 상태를 확인하지 못했어요.");
+    else if (!isGoogleUser) showToast("글을 쓰려면 Google 계정으로 로그인해 주세요.");
+    else if (!writingIsOpen) showToast("로그인했어요. 현재 글쓰기 기간은 닫혀 있어요.");
     loadArticles(selectedId);
+  }
+
+  async function refreshWritingAvailability() {
+    if (!supabaseClient || !currentUser) return;
+    const result = await supabaseClient.rpc("is_article_writing_open");
+    if (result.error) return;
+    const open = result.data === true;
+    if (open !== writingIsOpen) {
+      writingIsOpen = open;
+      setSignedInUser(currentUser, open && isGoogleUser, isAdmin);
+      loadArticles(selectedId);
+    }
   }
 
   function initializeBackend() {
     const hasConfig = Boolean(supabaseConfig.url && supabaseConfig.anonKey);
     if (!hasConfig || !window.supabase || typeof window.supabase.createClient !== "function") {
       loginButton.addEventListener("click", function () {
-        showToast("로그인을 켜려면 AUTH_SETUP.md의 Supabase와 학교 도메인 설정을 먼저 채워 주세요.");
+        showToast("Google 로그인을 사용하려면 Supabase 설정을 확인해 주세요.");
       });
       logoutButton.hidden = true;
       writerTools.hidden = true;
+      adminSettingsButton.hidden = true;
       return;
     }
 
@@ -688,6 +849,26 @@
       if (result.error) showToast("로그아웃하지 못했어요. 다시 시도해 주세요.");
       else showToast("로그아웃했어요.");
     });
+    adminSettingsButton.addEventListener("click", function () { loadAdminWritingSettings(true); });
+    adminSettingsClose.addEventListener("click", function () { adminSettingsDialog.close(); });
+    adminWritingForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      const period = getWritingPeriodFromInputs();
+      if (!period) return;
+      const saved = await saveWritingSettings(period, Boolean(writingSettings && writingSettings.enabled));
+      if (saved) showToast("작성 기간을 저장했어요. (한국시간)");
+    });
+    writingToggleButton.addEventListener("click", async function () {
+      if (!isAdmin) return;
+      const enabled = !Boolean(writingSettings && writingSettings.enabled);
+      const period = enabled ? getWritingPeriodFromInputs() : getSavedPeriod();
+      if (!period) return;
+      const saved = await saveWritingSettings(period, enabled);
+      if (!saved) return;
+      if (!enabled) showToast("글쓰기를 중지했어요.");
+      else if (writingIsOpen) showToast("글쓰기를 허용했어요.");
+      else showToast("작성 허용을 예약했어요. 시작 시각이 되면 글을 쓸 수 있어요.");
+    });
     supabaseClient.auth.onAuthStateChange(function (_event, session) {
       window.setTimeout(function () { handleAuthSession(session); }, 0);
     });
@@ -695,13 +876,25 @@
       if (result.error) showToast("로그인 상태를 확인하지 못했어요.");
       else handleAuthSession(result.data.session);
     });
+    window.setInterval(refreshWritingAvailability, 60000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) refreshWritingAvailability();
+    });
   }
 
   newArticleButton.addEventListener("click", function () { openArticleEditor(null); });
   document.getElementById("cancel-article-button").addEventListener("click", resetArticleEditor);
   articleForm.addEventListener("submit", async function (event) {
     event.preventDefault();
-    if (!isWriter || !supabaseClient || !currentUser) return;
+    if (!currentUser) {
+      showToast("글을 쓰려면 Google 로그인을 해 주세요.");
+      return;
+    }
+    if (!isWriter) {
+      showToast("관리자가 글쓰기를 허용한 기간에만 작성할 수 있어요.");
+      return;
+    }
+    if (!supabaseClient) return;
     const title = document.getElementById("article-title").value.trim();
     const body = document.getElementById("article-body").value.trim();
     const source = document.getElementById("article-source").value.trim();

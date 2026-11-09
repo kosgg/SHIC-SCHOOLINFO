@@ -396,9 +396,9 @@ html[data-theme="night"] .topic-node.is-node-collapsed::before, html[data-theme=
 /* Public reading and approved writer controls */
 .auth-actions { display: inline-flex; align-items: center; gap: 7px; }
 .auth-user { max-width: 150px; overflow: hidden; color: #71827b; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.login-button, .logout-button { min-height: 37px; padding: 0 12px; border: 1px solid #cbdccf; border-radius: 10px; color: #315b44; background: rgba(255,255,255,.86); font-size: 10px; font-weight: 750; white-space: nowrap; cursor: pointer; }
-.login-button:hover, .logout-button:hover { border-color: #92b49a; background: #fff; }
-.login-button:focus-visible, .logout-button:focus-visible, .new-article-button:focus-visible, .article-card-actions button:focus-visible, .article-form button:focus-visible { outline: 3px solid rgba(83, 143, 100, .38); outline-offset: 2px; }
+.login-button, .logout-button, .admin-settings-button { min-height: 37px; padding: 0 12px; border: 1px solid #cbdccf; border-radius: 10px; color: #315b44; background: rgba(255,255,255,.86); font-size: 10px; font-weight: 750; white-space: nowrap; cursor: pointer; }
+.login-button:hover, .logout-button:hover, .admin-settings-button:hover { border-color: #92b49a; background: #fff; }
+.login-button:focus-visible, .logout-button:focus-visible, .admin-settings-button:focus-visible, .new-article-button:focus-visible, .article-card-actions button:focus-visible, .article-form button:focus-visible { outline: 3px solid rgba(83, 143, 100, .38); outline-offset: 2px; }
 .articles-panel { display: grid; gap: 10px; margin-top: 19px; }
 .articles-heading { display: flex; align-items: center; gap: 8px; }
 .articles-heading h3 { margin: 0; color: #41594b; font-size: 12px; font-weight: 800; }
@@ -421,7 +421,8 @@ html[data-theme="night"] .topic-node.is-node-collapsed::before, html[data-theme=
 .new-article-button { width: 100%; min-height: 38px; border: 1px solid #b7d0bc; border-radius: 10px; color: #315e45; background: #eff6ed; font-size: 11px; font-weight: 750; cursor: pointer; }
 .new-article-button:hover { border-color: #86b28f; background: #e4f0e1; }
 .article-form { display: grid; gap: 7px; padding: 12px; border: 1px solid #dce7dc; border-radius: 12px; background: #f9fbf8; }
-.article-form[hidden], .writer-tools[hidden], .login-button[hidden], .logout-button[hidden], .auth-user[hidden], .app-toast[hidden] { display: none; }
+.article-form[hidden], .writer-tools[hidden], .writing-status[hidden], .login-button[hidden], .logout-button[hidden], .admin-settings-button[hidden], .auth-user[hidden], .app-toast[hidden] { display: none; }
+.writing-status { margin: 0; padding: 9px 11px; border: 1px solid #e2eae0; border-radius: 9px; color: #708177; background: rgba(246,249,244,.9); font-size: 10px; line-height: 1.55; }
 .article-form > label { margin-top: 4px; color: #617368; font-size: 10px; font-weight: 750; }
 .article-form > label span { color: #9aa69e; font-weight: 500; }
 .article-form input:not([type="checkbox"]), .article-form textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #dce5dc; border-radius: 8px; color: #293d31; background: #fff; font: inherit; font-size: 11px; line-height: 1.5; }
@@ -435,9 +436,27 @@ html[data-theme="night"] .topic-node.is-node-collapsed::before, html[data-theme=
 .article-form-actions .save-article-button:hover { background: #326546; }
 .article-form-actions button:disabled { cursor: wait; opacity: .6; }
 .app-toast { position: fixed; z-index: 80; right: 20px; bottom: 20px; max-width: min(440px, calc(100vw - 32px)); padding: 12px 16px; border: 1px solid #d7e4d7; border-radius: 12px; color: #334d3c; background: rgba(255,255,255,.97); box-shadow: 0 12px 35px rgba(24,49,34,.18); font-size: 12px; line-height: 1.6; }
+.admin-settings-dialog { width: min(460px, calc(100vw - 28px)); max-width: none; max-height: min(90vh, 680px); padding: 22px; border: 1px solid #d8e5d7; border-radius: 18px; color: #304538; background: #fbfcf9; box-shadow: 0 25px 80px rgba(26,48,35,.24); }
+.admin-settings-dialog::backdrop { background: rgba(17,34,25,.42); backdrop-filter: blur(3px); }
+.admin-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.admin-dialog-kicker { color: #78917e; font-size: 9px; font-weight: 800; letter-spacing: .15em; }
+.admin-dialog-heading h2 { margin: 5px 0 0; color: #263c30; font-size: 20px; }
+.admin-dialog-close { width: 32px; height: 32px; border: 1px solid #dce6dc; border-radius: 9px; color: #53695b; background: #fff; font-size: 20px; cursor: pointer; }
+.admin-dialog-status { margin: 16px 0; padding: 10px 12px; border-radius: 10px; color: #345c43; background: #eaf3e9; font-size: 11px; line-height: 1.6; }
+.admin-writing-form { display: grid; gap: 8px; }
+.admin-writing-form label { margin-top: 4px; color: #617368; font-size: 11px; font-weight: 750; }
+.admin-writing-form label span { color: #91a095; font-weight: 500; }
+.admin-writing-form input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #d7e2d7; border-radius: 9px; color: #304538; background: #fff; font: inherit; font-size: 12px; }
+.admin-writing-form input:focus { border-color: #8cb598; outline: 3px solid rgba(83,143,100,.12); }
+.admin-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
+.admin-dialog-actions button { min-height: 40px; border: 1px solid #d2dfd2; border-radius: 9px; color: #496250; background: #fff; font-size: 11px; font-weight: 750; cursor: pointer; }
+.admin-dialog-actions .admin-save-button { border-color: #3f7653; color: #fff; background: #3f7653; }
+.admin-dialog-actions .admin-save-button:hover { background: #326546; }
+.admin-dialog-actions .admin-toggle-button { border-color: #bfd4c1; color: #315e45; background: #edf5eb; }
+.admin-dialog-note { margin: 12px 0 0; color: #829086; font-size: 10px; line-height: 1.6; }
 html[data-theme="night"] .auth-user { color: #a9becb; }
-html[data-theme="night"] .login-button, html[data-theme="night"] .logout-button { border-color: #36566a; color: #d5eee2; background: rgba(17,42,62,.92); }
-html[data-theme="night"] .login-button:hover, html[data-theme="night"] .logout-button:hover { border-color: #70a98e; background: #183a52; }
+html[data-theme="night"] .login-button, html[data-theme="night"] .logout-button, html[data-theme="night"] .admin-settings-button { border-color: #36566a; color: #d5eee2; background: rgba(17,42,62,.92); }
+html[data-theme="night"] .login-button:hover, html[data-theme="night"] .logout-button:hover, html[data-theme="night"] .admin-settings-button:hover { border-color: #70a98e; background: #183a52; }
 html[data-theme="night"] .articles-heading h3 { color: #d3e5dc; }
 html[data-theme="night"] .articles-heading > span { color: #c3dfcd; background: #1c4052; }
 html[data-theme="night"] .article-empty { border-color: #34536a; color: #9fb3c1; }
@@ -458,12 +477,22 @@ html[data-theme="night"] .article-form input:not([type="checkbox"]), html[data-t
 html[data-theme="night"] .article-form .publish-toggle { color: #c2d4dc; }
 html[data-theme="night"] .article-form-actions .save-article-button { border-color: #4f9471; color: #f2fff7; background: #34704f; }
 html[data-theme="night"] .app-toast { border-color: #34536a; color: #e0edf4; background: rgba(13,34,56,.97); box-shadow: 0 12px 35px rgba(0,0,0,.32); }
+html[data-theme="night"] .writing-status { border-color: #29475a; color: #a9becb; background: rgba(13,34,56,.9); }
+html[data-theme="night"] .admin-settings-dialog { border-color: #36566a; color: #d7e4e8; background: #0e263c; }
+html[data-theme="night"] .admin-dialog-heading h2 { color: #e3eff3; }
+html[data-theme="night"] .admin-dialog-close, html[data-theme="night"] .admin-writing-form input, html[data-theme="night"] .admin-dialog-actions button { border-color: #35566d; color: #d6e5e7; background: #153149; }
+html[data-theme="night"] .admin-dialog-status { color: #d3ebd9; background: #183d3c; }
+html[data-theme="night"] .admin-writing-form label { color: #b8cbd3; }
+html[data-theme="night"] .admin-dialog-actions .admin-save-button { border-color: #4f9471; color: #f2fff7; background: #34704f; }
+html[data-theme="night"] .admin-dialog-actions .admin-toggle-button { border-color: #3d715e; color: #d6f1df; background: #173c3c; }
+html[data-theme="night"] .admin-dialog-note { color: #9fb3c1; }
 
 @media (max-width: 740px) {
   .header-tools { gap: 5px; }
   .auth-actions { gap: 4px; }
   .auth-user { display: none; }
-  .login-button, .logout-button { min-height: 34px; padding: 0 8px; font-size: 9px; }
+  .login-button, .logout-button, .admin-settings-button { min-height: 34px; padding: 0 8px; font-size: 9px; }
+  .admin-settings-dialog { padding: 18px; }
   .articles-panel { margin-top: 15px; }
   .app-toast { right: 12px; bottom: 12px; font-size: 11px; }
 }
