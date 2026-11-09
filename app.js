@@ -111,7 +111,7 @@
 
   function updateGraphLayout() {
     const width = Math.min(1800, Math.max(760, mapViewport.clientWidth));
-    const height = Math.max(500, mapViewport.clientHeight);
+    const height = Math.max(1000, mapViewport.clientHeight);
     mapStage.style.width = width + "px";
     mapStage.style.minWidth = width + "px";
     mapStage.style.height = height + "px";
