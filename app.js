@@ -11,8 +11,13 @@
   };
   const branchesLayer = document.getElementById("branches-layer");
   const mobileList = document.getElementById("mobile-map-list");
+  const mapScrollContent = document.getElementById("map-scroll-content");
   const mapStage = document.getElementById("map-stage");
   const mapViewport = document.getElementById("map-viewport");
+  const mapZoomOut = document.getElementById("map-zoom-out");
+  const mapZoomIn = document.getElementById("map-zoom-in");
+  const mapZoomReset = document.getElementById("map-zoom-reset");
+  const mapZoomLevel = document.getElementById("map-zoom-level");
   const linesSvg = document.getElementById("tree-lines");
   const searchInput = document.getElementById("site-search");
   const searchResults = document.getElementById("search-results");
@@ -57,6 +62,12 @@
   let editingArticleId = null;
   let articleLoadToken = 0;
   let toastTimer = null;
+  let mapZoom = 1;
+  let mapBaseWidth = 760;
+  let mapBaseHeight = 1000;
+  let mapZoomOffsetX = 0;
+  let mapZoomOffsetY = 0;
+  let mapContentMarginLeft = 0;
 
   function makeNodeButton(node, className, smallLabel) {
     const button = document.createElement("button");
@@ -109,13 +120,53 @@
     };
   }
 
+  function syncMapZoomLayout() {
+    const scaledWidth = mapBaseWidth * mapZoom;
+    const scaledHeight = mapBaseHeight * mapZoom;
+    const layoutWidth = Math.max(mapBaseWidth, scaledWidth);
+    const layoutHeight = Math.max(mapBaseHeight, scaledHeight);
+    mapZoomOffsetX = (layoutWidth - scaledWidth) / 2;
+    mapZoomOffsetY = (layoutHeight - scaledHeight) / 2;
+    mapScrollContent.style.width = layoutWidth + "px";
+    mapScrollContent.style.height = layoutHeight + "px";
+    mapContentMarginLeft = Math.max(0, (mapViewport.clientWidth - layoutWidth) / 2);
+    mapScrollContent.style.marginLeft = mapContentMarginLeft + "px";
+    mapScrollContent.style.marginRight = mapContentMarginLeft + "px";
+    mapStage.style.transform = "translate(" + mapZoomOffsetX + "px, " + mapZoomOffsetY + "px) scale(" + mapZoom + ")";
+    mapZoomLevel.textContent = Math.round(mapZoom * 100) + "%";
+  }
+
+  function setMapZoom(nextZoom, clientX, clientY) {
+    const previousZoom = mapZoom;
+    const clampedZoom = Math.min(2.25, Math.max(0.6, nextZoom));
+    if (clampedZoom === previousZoom) return;
+
+    const viewportBounds = mapViewport.getBoundingClientRect();
+    const anchorX = clientX == null ? mapViewport.clientWidth / 2 : clientX - viewportBounds.left;
+    const anchorY = clientY == null ? mapViewport.clientHeight / 2 : clientY - viewportBounds.top;
+    const previousOffsetX = mapContentMarginLeft + mapZoomOffsetX;
+    const previousOffsetY = mapZoomOffsetY;
+    const previousScrollLeft = mapViewport.scrollLeft;
+    const previousScrollTop = mapViewport.scrollTop;
+    const scaleRatio = clampedZoom / previousZoom;
+
+    mapZoom = clampedZoom;
+    syncMapZoomLayout();
+
+    const nextOffsetX = mapContentMarginLeft + mapZoomOffsetX;
+    const nextOffsetY = mapZoomOffsetY;
+    mapViewport.scrollLeft = (previousScrollLeft + anchorX - previousOffsetX) * scaleRatio + nextOffsetX - anchorX;
+    mapViewport.scrollTop = (previousScrollTop + anchorY - previousOffsetY) * scaleRatio + nextOffsetY - anchorY;
+  }
+
   function updateGraphLayout() {
-    const width = Math.min(1800, Math.max(760, mapViewport.clientWidth));
-    const height = Math.max(1000, mapViewport.clientHeight);
-    mapStage.style.width = width + "px";
-    mapStage.style.minWidth = width + "px";
-    mapStage.style.height = height + "px";
-    const layout = graphPositions(width, height);
+    mapBaseWidth = Math.min(1800, Math.max(760, mapViewport.clientWidth));
+    mapBaseHeight = Math.max(1000, mapViewport.clientHeight);
+    mapStage.style.width = mapBaseWidth + "px";
+    mapStage.style.minWidth = mapBaseWidth + "px";
+    mapStage.style.height = mapBaseHeight + "px";
+    syncMapZoomLayout();
+    const layout = graphPositions(mapBaseWidth, mapBaseHeight);
     const rootButton = mapStage.querySelector('[data-node-id="home"]');
     if (rootButton) placeNode(rootButton, layout.home.root);
     info.categories.forEach(function (category) {
@@ -223,10 +274,10 @@
   function nodeCenter(element, stageBounds) {
     const rect = element.getBoundingClientRect();
     return {
-      x: rect.left + rect.width / 2 - stageBounds.left,
-      y: rect.top + rect.height / 2 - stageBounds.top,
-      width: rect.width,
-      height: rect.height
+      x: (rect.left + rect.width / 2 - stageBounds.left) / mapZoom,
+      y: (rect.top + rect.height / 2 - stageBounds.top) / mapZoom,
+      width: rect.width / mapZoom,
+      height: rect.height / mapZoom
     };
   }
 
@@ -257,8 +308,8 @@
 
   function drawConnections() {
     const bounds = mapStage.getBoundingClientRect();
-    const width = Math.max(mapStage.scrollWidth, bounds.width);
-    const height = Math.max(mapStage.scrollHeight, bounds.height);
+    const width = mapStage.offsetWidth;
+    const height = mapStage.offsetHeight;
     linesSvg.setAttribute("width", String(width));
     linesSvg.setAttribute("height", String(height));
     linesSvg.setAttribute("viewBox", "0 0 " + width + " " + height);
@@ -1071,6 +1122,17 @@
     toggleNodeCollapse(button.dataset.nodeId);
   });
   detailClose.addEventListener("click", closeDetail);
+
+  mapViewport.addEventListener("wheel", function (event) {
+    event.preventDefault();
+    let delta = event.deltaY;
+    if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
+    if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= mapViewport.clientHeight;
+    setMapZoom(mapZoom * Math.exp(-delta * 0.001), event.clientX, event.clientY);
+  }, { passive: false });
+  mapZoomOut.addEventListener("click", function () { setMapZoom(mapZoom / 1.15); });
+  mapZoomIn.addEventListener("click", function () { setMapZoom(mapZoom * 1.15); });
+  mapZoomReset.addEventListener("click", function () { setMapZoom(1); });
 
   searchInput.addEventListener("input", updateSearch);
   searchResults.addEventListener("click", function (event) {

@@ -51,20 +51,28 @@
         <section class="explorer-layout" aria-label="서현고 정보 탐색">
           <section class="tree-card" aria-label="정보 스킬 트리">
             <div class="map-viewport" id="map-viewport" tabindex="0" aria-label="가운데 서현고에서 주제별로 탐색하는 전체 화면 정보 지도">
-              <div class="map-stage" id="map-stage">
-                <svg class="tree-lines" id="tree-lines" aria-hidden="true"></svg>
-                <button class="root-node map-node" type="button" data-node-id="home" aria-label="서현고 정보 지도 홈 열기">
-                  <span class="root-node-halo"></span>
-                  <span class="root-node-mark" aria-hidden="true">S</span>
-                  <span class="root-node-title">서현고</span>
-                  <span class="root-node-caption">정보의 중심</span>
-                </button>
-                <div class="branches-layer" id="branches-layer" aria-label="정보 주제와 세부 정보"></div>
+              <div class="map-scroll-content" id="map-scroll-content">
+                <div class="map-stage" id="map-stage">
+                  <svg class="tree-lines" id="tree-lines" aria-hidden="true"></svg>
+                  <button class="root-node map-node" type="button" data-node-id="home" aria-label="서현고 정보 지도 홈 열기">
+                    <span class="root-node-halo"></span>
+                    <span class="root-node-mark" aria-hidden="true">S</span>
+                    <span class="root-node-title">서현고</span>
+                    <span class="root-node-caption">정보의 중심</span>
+                  </button>
+                  <div class="branches-layer" id="branches-layer" aria-label="정보 주제와 세부 정보"></div>
+                </div>
               </div>
             </div>
 
+            <div class="map-zoom-controls" role="group" aria-label="지도 확대·축소">
+              <button type="button" id="map-zoom-out" aria-label="지도 축소" title="축소">−</button>
+              <output id="map-zoom-level" aria-live="polite">100%</output>
+              <button type="button" id="map-zoom-in" aria-label="지도 확대" title="확대">+</button>
+              <button class="map-zoom-reset" type="button" id="map-zoom-reset">초기화</button>
+            </div>
             <div class="mobile-map-list" id="mobile-map-list" aria-label="정보 주제 목록"></div>
-            <div class="interaction-hint"><span aria-hidden="true">✦</span> 더블 클릭 또는 우클릭으로 노드를 접고 펼칠 수 있어요</div>
+            <div class="interaction-hint"><span aria-hidden="true">✦</span> 휠로 확대·축소 · 더블 클릭 또는 우클릭으로 노드를 접고 펼치기</div>
           </section>
 
           <aside class="detail-card" id="detail-card" aria-live="polite" aria-label="선택한 정보 상세" aria-hidden="true">
