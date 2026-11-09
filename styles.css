@@ -329,7 +329,7 @@ body { min-width: 320px; }
 main#top { position: relative; width: 100%; min-height: 0; height: auto; }
 .explorer-layout { position: relative; display: block; width: 100%; min-height: 0; height: auto; }
 .tree-card { position: relative; min-width: 0; min-height: 1000px; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.map-viewport { position: relative; width: 100%; height: max(100vh, 1000px); height: max(100dvh, 1000px); overflow: auto; overscroll-behavior: contain; background-color: #f4f7f2; background-image: radial-gradient(#d5e0d5 1px, transparent 1px); background-size: 20px 20px; scrollbar-color: #8da99a transparent; scrollbar-width: thin; }
+.map-viewport { position: relative; width: 100%; height: max(100vh, 1000px); height: max(100dvh, 1000px); overflow: auto; overscroll-behavior: auto; background-color: #f4f7f2; background-image: radial-gradient(#d5e0d5 1px, transparent 1px); background-size: 20px 20px; scrollbar-color: #8da99a transparent; scrollbar-width: thin; }
 .map-viewport::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
 .map-viewport::-webkit-scrollbar-thumb { border-radius: 8px; background: #8da99a; }
 .map-stage { width: 100%; min-width: 760px; min-height: 1000px; margin: 0 auto; }
