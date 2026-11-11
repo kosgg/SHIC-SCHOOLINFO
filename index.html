@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#f5f7f2">
     <meta name="description" content="게임 스킬 트리처럼 탐색하는 서현고 학생 정보 지도입니다.">
     <title>서현고 정보 지도</title>
+    <link rel="icon" type="image/png" href="assets/school-info-symbol.png">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="content.js" defer></script>
@@ -16,7 +17,7 @@
     <div class="site-shell">
       <header class="site-header">
         <a class="brand" href="#top" aria-label="서현고 정보 지도 홈">
-          <span class="brand-mark" aria-hidden="true">S</span>
+          <img class="brand-logo" src="assets/school-info-symbol.png" alt="">
           <span class="brand-copy">
             <strong>서현고</strong>
             <span>STUDENT INFO MAP</span>
@@ -72,7 +73,7 @@
               <button class="map-zoom-reset" type="button" id="map-zoom-reset">초기화</button>
             </div>
             <div class="mobile-map-list" id="mobile-map-list" aria-label="정보 주제 목록"></div>
-            <div class="interaction-hint"><span aria-hidden="true">✦</span> 휠로 확대·축소 · 더블 클릭 또는 우클릭으로 노드를 접고 펼치기</div>
+          <div class="interaction-hint"><span aria-hidden="true">✦</span> 좌클릭 드래그로 이동 · 휠로 확대·축소 · 더블 클릭 또는 우클릭으로 노드 접기</div>
           </section>
 
           <aside class="detail-card" id="detail-card" aria-live="polite" aria-label="선택한 정보 상세" aria-hidden="true">

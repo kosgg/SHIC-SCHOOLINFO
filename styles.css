@@ -21,9 +21,12 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   color: var(--ink);
-  background:
-    radial-gradient(ellipse at 88% 3%, rgba(213, 237, 209, .32), transparent 28rem),
-    var(--paper);
+  background-color: var(--paper);
+  background-image: url("assets/school-info-background.jpg");
+  background-position: center top;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 button, input { font: inherit; }
@@ -33,8 +36,8 @@ a { color: inherit; }
 .site-shell { width: min(1380px, 100% - 72px); margin: 0 auto; }
 .site-header { min-height: 88px; display: flex; align-items: center; justify-content: space-between; gap: 28px; border-bottom: 1px solid rgba(39, 76, 59, .09); }
 .brand { display: inline-flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; flex: 0 0 auto; }
-.brand-mark, .footer-mark { display: grid; place-items: center; color: #e7f7d4; background: var(--green); font-weight: 800; }
-.brand-mark { width: 40px; height: 40px; border-radius: 13px; font-size: 20px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+.footer-mark { display: grid; place-items: center; color: #e7f7d4; background: var(--green); font-weight: 800; }
+.brand-logo { display: block; width: 40px; height: 40px; flex: 0 0 auto; padding: 3px; border-radius: 13px; background: #e7efe4; object-fit: contain; }
 .brand-copy { display: grid; gap: 2px; line-height: 1.05; }
 .brand-copy strong { font-size: 14px; letter-spacing: .14em; }
 .brand-copy span { color: #8a9991; font-family: "DM Mono", monospace; font-size: 9px; letter-spacing: .1em; }
@@ -87,6 +90,7 @@ a { color: inherit; }
 .root-node-title { font-size: 14px; font-weight: 750; letter-spacing: -.04em; }
 .root-node-caption { margin-top: 4px; color: rgba(237, 246, 231, .68); font-size: 8px; }
 .category-node { position: absolute; z-index: 3; display: flex; align-items: center; gap: 10px; width: 172px; min-height: 70px; padding: 10px 12px; border: 1px solid #e1e9df; border-radius: 13px; background: rgba(255,255,255,.97); box-shadow: 0 4px 10px rgba(38, 68, 46, .06); transform: translate(-50%, -50%); }
+.subcategory-node .node-mark { width: 40px; font-size: 8px; }
 .category-node:hover { transform: translate(-50%, -50%) translateY(-2px); border-color: #a8c8a8; box-shadow: 0 9px 20px rgba(39, 76, 48, .12); }
 .category-node.is-selected { border-color: #7ba986; background: #f4f9f1; box-shadow: 0 0 0 3px rgba(135, 183, 123, .13); }
 .category-node.is-branch-active { border-color: #a8c8a8; background: #f8fbf6; }
@@ -164,7 +168,7 @@ a { color: inherit; }
 @media (max-width: 740px) {
   .site-shell { width: min(100% - 32px, 560px); }
   .site-header { min-height: 75px; flex-wrap: wrap; gap: 11px; padding: 13px 0; }
-  .brand-mark { width: 36px; height: 36px; }
+  .brand-logo { width: 36px; height: 36px; }
   .brand-copy strong { font-size: 12px; }
   .brand-copy span { font-size: 8px; }
   .header-tools { width: 100%; justify-content: space-between; gap: 9px; }
@@ -241,9 +245,9 @@ html[data-theme="night"] {
   --shadow: 0 20px 60px rgba(0, 0, 0, .26);
 }
 
-html[data-theme="night"] body { background: radial-gradient(ellipse at 53% 36%, rgba(26, 66, 101, .22), transparent 38rem), #07182b; color: var(--ink); }
+html[data-theme="night"] body { background-color: #173149; background-image: url("assets/school-info-background.jpg"); background-position: center top; background-size: cover; background-repeat: no-repeat; background-attachment: fixed; background-blend-mode: multiply; color: var(--ink); }
 html[data-theme="night"] .site-header, html[data-theme="night"] .site-footer { border-color: rgba(147, 184, 207, .13); }
-html[data-theme="night"] .brand-mark, html[data-theme="night"] .footer-mark { color: #d7f3b2; background: #173a50; }
+html[data-theme="night"] .footer-mark { color: #d7f3b2; background: #173a50; }
 html[data-theme="night"] .brand-copy span, html[data-theme="night"] .site-footer p { color: #819bb0; }
 html[data-theme="night"] .search-wrap { border-color: #29445e; background: #0d233a; }
 html[data-theme="night"] .search-wrap:focus-within { border-color: #5a92a9; box-shadow: 0 0 0 3px rgba(78, 154, 181, .15); }
@@ -329,7 +333,9 @@ body { min-width: 320px; }
 main#top { position: relative; width: 100%; min-height: 0; height: auto; }
 .explorer-layout { position: relative; display: block; width: 100%; min-height: 0; height: auto; }
 .tree-card { position: relative; min-width: 0; min-height: 1000px; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.map-viewport { position: relative; width: 100%; height: max(100vh, 1000px); height: max(100dvh, 1000px); overflow: auto; overscroll-behavior: auto; background-color: #f4f7f2; background-image: radial-gradient(#d5e0d5 1px, transparent 1px); background-size: 20px 20px; scrollbar-color: #8da99a transparent; scrollbar-width: thin; }
+.map-viewport { position: relative; width: 100%; height: max(100vh, 1000px); height: max(100dvh, 1000px); overflow: auto; overscroll-behavior: auto; background-color: #fffaf0; background-image: url("assets/school-info-background.jpg"); background-position: center; background-size: cover; background-repeat: no-repeat; scrollbar-color: #8da99a transparent; scrollbar-width: thin; }
+.map-viewport { cursor: grab; }
+.map-viewport.is-panning, .map-viewport.is-panning * { cursor: grabbing !important; user-select: none !important; }
 .map-viewport::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
 .map-viewport::-webkit-scrollbar-thumb { border-radius: 8px; background: #8da99a; }
 .map-scroll-content { position: relative; }
@@ -353,7 +359,7 @@ main#top { position: relative; width: 100%; min-height: 0; height: auto; }
 .site-header .unofficial-badge { font-size: 9px; }
 html[data-theme="night"] .site-header { border-color: rgba(147, 184, 207, .08); background: linear-gradient(180deg, rgba(7, 24, 43, .98), rgba(7, 24, 43, .96) 72%, rgba(7, 24, 43, .92)); }
 html[data-theme="night"] .tree-card { background: transparent; box-shadow: none; }
-html[data-theme="night"] .map-viewport { background-color: #081a2e; background-image: radial-gradient(#23405b 1px, transparent 1px); }
+html[data-theme="night"] .map-viewport { background-color: #173149; background-image: url("assets/school-info-background.jpg"); background-position: center; background-size: cover; background-repeat: no-repeat; background-blend-mode: multiply; }
 html[data-theme="night"] .map-zoom-controls { border-color: #294760; color: #b4c8d3; background: rgba(13, 34, 56, .94); box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
 html[data-theme="night"] .map-zoom-controls button { color: #d7eee3; }
 html[data-theme="night"] .map-zoom-controls button:hover { border-color: #35566a; background: #18374c; }
@@ -367,7 +373,7 @@ html[data-theme="night"] .detail-close:hover { border-color: #6c9eb0; color: #e9
   .site-header { min-height: 68px; padding: 9px 12px; gap: 9px; }
   .header-tools { width: auto; flex: 1; justify-content: flex-end; gap: 7px; }
   .brand { gap: 8px; }
-  .brand-mark { width: 34px; height: 34px; }
+  .brand-logo { width: 34px; height: 34px; }
   .brand-copy strong { font-size: 11px; }
   .brand-copy span { font-size: 7px; letter-spacing: .06em; }
   .search-wrap { width: min(190px, 39vw); height: 36px; padding: 0 8px; flex: 0 1 auto; }
@@ -379,11 +385,11 @@ html[data-theme="night"] .detail-close:hover { border-color: #6c9eb0; color: #e9
   .tree-card { min-height: 0; }
   .map-viewport { display: none; }
   .map-zoom-controls { display: none; }
-  .mobile-map-list { position: relative; z-index: 2; inset: auto; display: grid; align-content: start; gap: 8px; margin: 12px 11px 18px; padding: 12px; overflow: visible; border: 1px solid #e1e9df; border-radius: 15px; background-color: #fbfcfa; background-image: radial-gradient(#dce5dc .8px, transparent .8px); background-size: 16px 16px; box-shadow: 0 14px 35px rgba(30, 58, 43, .08); }
+  .mobile-map-list { position: relative; z-index: 2; inset: auto; display: grid; align-content: start; gap: 8px; margin: 12px 11px 18px; padding: 12px; overflow: visible; border: 1px solid #e1e9df; border-radius: 15px; background-color: rgba(251, 252, 250, .78); background-image: radial-gradient(#dce5dc .8px, transparent .8px); background-size: 16px 16px; box-shadow: 0 14px 35px rgba(30, 58, 43, .08); }
   .interaction-hint { display: none; }
   .detail-card { position: fixed; top: auto; right: 10px; bottom: 10px; left: 10px; width: auto; min-height: 0; max-height: calc(100dvh - 88px); padding: 16px 15px 14px; border-radius: 16px; transform: translateY(calc(100% + 20px)); }
   .detail-card.is-open { transform: translateY(0); }
-  html[data-theme="night"] .mobile-map-list { background-color: #081a2e; background-image: radial-gradient(#23405b .8px, transparent .8px); border-color: #2b4962; box-shadow: 0 14px 35px rgba(0, 0, 0, .25); }
+  html[data-theme="night"] .mobile-map-list { background-color: rgba(8, 26, 46, .86); background-image: radial-gradient(#23405b .8px, transparent .8px); border-color: #2b4962; box-shadow: 0 14px 35px rgba(0, 0, 0, .25); }
 }
 
 @media (max-height: 640px) and (min-width: 741px) {

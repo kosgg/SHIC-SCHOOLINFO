@@ -11,8 +11,8 @@ window.SEOHYUN_INFO = {
       number: "01",
       title: "학교정보",
       subtitle: "기본 안내",
-      summary: "학교 소개와 교육 관련 기본 안내를 모으는 주제입니다.",
-      overview: "학교 소개, 교육과정, 문의 안내처럼 기본적으로 알아두면 좋은 정보를 정리하는 가지입니다.",
+      summary: "학교 소개와 교육·교내 시설 안내를 모으는 주제입니다.",
+      overview: "학교 소개, 교육과정, 문의 안내와 교내 시설 정보를 함께 확인할 수 있는 가지입니다.",
       sourceUrl: "",
       updatedAt: "",
       topics: [
@@ -43,6 +43,34 @@ window.SEOHYUN_INFO = {
           guidance: "학교 홈페이지에 게시된 대표 연락처는 교무실 031-701-5993~6, 행정실 031-702-8485입니다. 연락처는 변경될 수 있으니 통화 전 공식 홈페이지에서 다시 확인해 주세요.",
           sourceUrl: "https://seohyun-h.goesn.kr/seohyun-h/main.do",
           updatedAt: "2026.11.09"
+        }
+      ],
+      subcategories: [
+        {
+          id: "facilities",
+          number: "01.05",
+          title: "교내 시설",
+          subtitle: "공간과 이용 안내",
+          summary: "교내 주요 공간과 이용 안내를 모으는 주제입니다.",
+          overview: "도서관과 공용 공간 등 학생들이 자주 찾는 시설의 위치·운영·이용 정보를 정리하는 가지입니다.",
+          sourceUrl: "",
+          updatedAt: "",
+          topics: [
+            { id: "library", title: "도서관", summary: "도서관 이용 안내를 확인해요.", guidance: "학교가 공개한 도서관 위치, 이용 시간, 대출 안내를 확인해 입력해 주세요." },
+            { id: "shared-spaces", title: "공용 공간", summary: "급식실과 체육 공간 안내를 모아요.", guidance: "공식 자료에서 확인한 시설 위치와 이용 안내를 공간별로 정리해 주세요." },
+            { id: "student-support", title: "학생 지원 공간", summary: "학생 지원 공간의 이용 안내를 모아요.", guidance: "학교가 공개한 학생 지원 공간의 위치와 이용 방법을 확인해 입력해 주세요." },
+            {
+              id: "school-map",
+              title: "학교 위치·지도",
+              summary: "공식 주소와 오시는 길을 확인해요.",
+              guidance: "학교 주소: [13588] 경기도 성남시 분당구 분당로 87. 학교 홈페이지에 ‘오시는 길’ 페이지가 있습니다. 확인한 공식 자료에서는 교내 건물별 상세 지도나 공간별 이용 시간까지 확인되지 않아 추가하지 않았습니다.",
+              sources: [
+                { label: "학교 오시는 길", url: "https://seohyun-h.goesn.kr/seohyun-h/lm/location/locationMapView.do?mi=19658" },
+                { label: "학교 홈페이지·대표 연락처", url: "https://seohyun-h.goesn.kr/seohyun-h/main.do" }
+              ],
+              updatedAt: "2026.11.09"
+            }
+          ]
         }
       ]
     },
@@ -85,32 +113,6 @@ window.SEOHYUN_INFO = {
         { id: "clubs", title: "동아리 안내", summary: "학생들이 동아리와 가입 정보를 작성할 예정이에요.", guidance: "동아리 목록이나 가입 시기를 임의로 채우지 않았습니다. 학생들이 확인된 활동 소개, 모집 시기, 신청 방법과 출처를 작성해 주세요." },
         { id: "student-council", title: "학생 참여", summary: "학생회와 자치 활동 안내를 모아요.", guidance: "학교가 공개한 학생회·자치 활동의 역할과 참여 방법을 확인해 정리해 주세요." },
         { id: "join-activities", title: "참여 방법", summary: "활동에 참여하는 경로를 안내해요.", guidance: "신청 기간, 신청 경로, 담당 부서 등 공개된 참여 정보를 최신 공지와 함께 입력해 주세요." }
-      ]
-    },
-    {
-      id: "facilities",
-      number: "04",
-      title: "교내 시설",
-      subtitle: "공간과 이용 안내",
-      summary: "교내 주요 공간과 이용 안내를 모으는 주제입니다.",
-      overview: "도서관과 공용 공간 등 학생들이 자주 찾는 시설의 위치·운영·이용 정보를 정리하는 가지입니다.",
-      sourceUrl: "",
-      updatedAt: "",
-      topics: [
-        { id: "library", title: "도서관", summary: "도서관 이용 안내를 확인해요.", guidance: "학교가 공개한 도서관 위치, 이용 시간, 대출 안내를 확인해 입력해 주세요." },
-        { id: "shared-spaces", title: "공용 공간", summary: "급식실과 체육 공간 안내를 모아요.", guidance: "공식 자료에서 확인한 시설 위치와 이용 안내를 공간별로 정리해 주세요." },
-        { id: "student-support", title: "학생 지원 공간", summary: "학생 지원 공간의 이용 안내를 모아요.", guidance: "학교가 공개한 학생 지원 공간의 위치와 이용 방법을 확인해 입력해 주세요." },
-        {
-          id: "school-map",
-          title: "학교 위치·지도",
-          summary: "공식 주소와 오시는 길을 확인해요.",
-          guidance: "학교 주소: [13588] 경기도 성남시 분당구 분당로 87. 학교 홈페이지에 ‘오시는 길’ 페이지가 있습니다. 확인한 공식 자료에서는 교내 건물별 상세 지도나 공간별 이용 시간까지 확인되지 않아 추가하지 않았습니다.",
-          sources: [
-            { label: "학교 오시는 길", url: "https://seohyun-h.goesn.kr/seohyun-h/lm/location/locationMapView.do?mi=19658" },
-            { label: "학교 홈페이지·대표 연락처", url: "https://seohyun-h.goesn.kr/seohyun-h/main.do" }
-          ],
-          updatedAt: "2026.11.09"
-        }
       ]
     }
   ]

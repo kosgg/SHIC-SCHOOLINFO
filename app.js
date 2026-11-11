@@ -7,7 +7,7 @@
     number: "00",
     title: "서현고",
     summary: "서현고 학생을 위한 정보 지도입니다.",
-    overview: "학교정보, 학사 일정, 동아리와 학생 참여, 교내 시설 정보를 한곳에서 찾아볼 수 있도록 구성한 지도입니다. 주제를 선택해 준비 중인 안내와 콘텐츠 편집 위치를 확인해 보세요."
+    overview: "학교정보와 그 아래 교내 시설, 학사 일정, 동아리·학생 참여 정보를 한곳에서 찾아볼 수 있도록 구성한 지도입니다. 주제를 선택해 준비 중인 안내와 콘텐츠 편집 위치를 확인해 보세요."
   };
   const branchesLayer = document.getElementById("branches-layer");
   const mobileList = document.getElementById("mobile-map-list");
@@ -68,6 +68,9 @@
   let mapZoomOffsetX = 0;
   let mapZoomOffsetY = 0;
   let mapContentMarginLeft = 0;
+  let mapPan = null;
+  let suppressedDragClick = null;
+  let suppressedDragClickTimer = null;
 
   function makeNodeButton(node, className, smallLabel) {
     const button = document.createElement("button");
@@ -107,15 +110,32 @@
     const centerY = height / 2 + 20;
     const categoryOffset = Math.min(400, Math.max(163, width * 0.23));
     const sideLeafOffset = Math.min(180, Math.max(65, width * 0.1));
-    const horizontalOffset = Math.min(300, width * 0.24);
     const categoryVerticalOffset = Math.min(260, Math.max(100, height * 0.25));
     const outerVerticalOffset = Math.min(380, Math.max(160, height * 0.32));
     const sideVerticalOffset = Math.min(180, Math.max(80, height * 0.16));
+    const rowPositions = function (count, y) {
+      return Array.from({ length: count }, function (_, index) { return [width * (index + 1) / (count + 1), y]; });
+    };
+    const schoolCategory = info.categories.find(function (item) { return item.id === "school"; });
+    const facilityCategory = (schoolCategory.subcategories || []).find(function (item) { return item.id === "facilities"; });
+    const facilityX = centerX - categoryOffset * 0.72;
+    const facilityY = centerY - 40;
     return {
-      school: { category: [centerX, centerY - categoryVerticalOffset], topics: [[centerX - horizontalOffset, centerY - outerVerticalOffset], [centerX, centerY - outerVerticalOffset], [centerX + horizontalOffset, centerY - outerVerticalOffset]] },
+      school: {
+        category: [centerX, centerY - categoryVerticalOffset],
+        topics: rowPositions(schoolCategory.topics.length, centerY - outerVerticalOffset),
+        subcategories: {
+          facilities: {
+            category: [facilityX, facilityY],
+            topics: Array.from({ length: facilityCategory.topics.length }, function (_, index) {
+              const spacing = Math.max(78, Math.min(126, 500 / Math.max(1, facilityCategory.topics.length - 1)));
+              return [Math.max(82, centerX - categoryOffset * 1.45), facilityY + (index - (facilityCategory.topics.length - 1) / 2) * spacing];
+            })
+          }
+        }
+      },
       calendar: { category: [centerX + categoryOffset, centerY], topics: [[width - sideLeafOffset, centerY - sideVerticalOffset], [width - sideLeafOffset, centerY], [width - sideLeafOffset, centerY + sideVerticalOffset]] },
-      activities: { category: [centerX, centerY + categoryVerticalOffset], topics: [[centerX - horizontalOffset, centerY + outerVerticalOffset], [centerX, centerY + outerVerticalOffset], [centerX + horizontalOffset, centerY + outerVerticalOffset]] },
-      facilities: { category: [centerX - categoryOffset, centerY], topics: [[sideLeafOffset, centerY - sideVerticalOffset], [sideLeafOffset, centerY], [sideLeafOffset, centerY + sideVerticalOffset]] },
+      activities: { category: [centerX, centerY + categoryVerticalOffset], topics: rowPositions(info.categories.find(function (item) { return item.id === "activities"; }).topics.length, centerY + outerVerticalOffset) },
       home: { root: [centerX, centerY] }
     };
   }
@@ -160,7 +180,7 @@
   }
 
   function updateGraphLayout() {
-    mapBaseWidth = Math.min(1800, Math.max(760, mapViewport.clientWidth));
+    mapBaseWidth = Math.min(1800, Math.max(1200, mapViewport.clientWidth));
     mapBaseHeight = Math.max(1000, mapViewport.clientHeight);
     mapStage.style.width = mapBaseWidth + "px";
     mapStage.style.minWidth = mapBaseWidth + "px";
@@ -175,6 +195,15 @@
       category.topics.forEach(function (topic, index) {
         const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
         if (topicButton) placeNode(topicButton, layout[category.id].topics[index]);
+      });
+      (category.subcategories || []).forEach(function (subcategory) {
+        const subcategoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + subcategory.id + '"]');
+        const subcategoryLayout = layout[category.id].subcategories[subcategory.id];
+        if (subcategoryButton) placeNode(subcategoryButton, subcategoryLayout.category);
+        subcategory.topics.forEach(function (topic, index) {
+          const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
+          if (topicButton) placeNode(topicButton, subcategoryLayout.topics[index]);
+        });
       });
     });
   }
@@ -210,25 +239,46 @@
       categoryButton.dataset.categoryId = category.id;
       branchesLayer.appendChild(categoryButton);
 
+      category.topLevelParentId = category.id;
       category.topics.forEach(function (topic, topicIndex) {
-        topic.kind = "topic";
-        topic.parentId = category.id;
-        topic.parentTitle = category.title;
-        topic.number = category.number + "." + String(topicIndex + 1).padStart(2, "0");
-        nodeIndex.set(topic.id, topic);
-        const topicButton = makeNodeButton(topic, "topic-node");
-        topicButton.dataset.categoryId = category.id;
-        branchesLayer.appendChild(topicButton);
+        registerTopicNode(topic, category, category, topicIndex);
       });
 
-      renderMobileCategory(category, categoryIndex === 0);
+      const mobileCategory = renderMobileCategory(category, categoryIndex === 0, mobileList);
+      (category.subcategories || []).forEach(function (subcategory) {
+        subcategory.kind = "category";
+        subcategory.parentId = category.id;
+        subcategory.topLevelParentId = category.id;
+        nodeIndex.set(subcategory.id, subcategory);
+        const subcategoryButton = makeNodeButton(subcategory, "category-node subcategory-node", subcategory.number);
+        subcategoryButton.dataset.categoryId = category.id;
+        branchesLayer.appendChild(subcategoryButton);
+
+        subcategory.topics.forEach(function (topic, topicIndex) {
+          registerTopicNode(topic, subcategory, category, topicIndex);
+        });
+        const mobileTopics = mobileCategory.querySelector(":scope > .mobile-topic-list");
+        renderMobileCategory(subcategory, false, mobileTopics);
+      });
     });
 
     updateGraphLayout();
     requestAnimationFrame(drawConnections);
   }
 
-  function renderMobileCategory(category, expanded) {
+  function registerTopicNode(topic, parentCategory, topLevelCategory, topicIndex) {
+    topic.kind = "topic";
+    topic.parentId = parentCategory.id;
+    topic.parentTitle = parentCategory.title;
+    topic.topLevelParentId = topLevelCategory.id;
+    topic.number = parentCategory.number + "." + String(topicIndex + 1).padStart(2, "0");
+    nodeIndex.set(topic.id, topic);
+    const topicButton = makeNodeButton(topic, "topic-node");
+    topicButton.dataset.categoryId = topLevelCategory.id;
+    branchesLayer.appendChild(topicButton);
+  }
+
+  function renderMobileCategory(category, expanded, parentContainer) {
     const details = document.createElement("details");
     details.className = "mobile-category";
     details.dataset.categoryId = category.id;
@@ -268,7 +318,8 @@
       topicList.appendChild(button);
     });
     details.appendChild(topicList);
-    mobileList.appendChild(details);
+    parentContainer.appendChild(details);
+    return details;
   }
 
   function nodeCenter(element, stageBounds) {
@@ -324,7 +375,7 @@
       const categoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + category.id + '"]');
       if (!categoryButton || categoryButton.classList.contains("is-folded-away") || collapsedBranches.has("home")) return;
       const categoryPoint = nodeCenter(categoryButton, bounds);
-      const isBranchActive = selectedNode.id === category.id || selectedNode.parentId === category.id;
+      const isBranchActive = selectedNode.id === category.id || selectedNode.parentId === category.id || selectedNode.topLevelParentId === category.id;
       connect(rootPoint, categoryPoint, isBranchActive);
 
       if (collapsedBranches.has(category.id)) return;
@@ -332,6 +383,19 @@
         const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
         if (!topicButton || topicButton.classList.contains("is-folded-away")) return;
         connect(categoryPoint, nodeCenter(topicButton, bounds), selectedId === topic.id);
+      });
+      (category.subcategories || []).forEach(function (subcategory) {
+        const subcategoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + subcategory.id + '"]');
+        if (!subcategoryButton || subcategoryButton.classList.contains("is-folded-away")) return;
+        const subcategoryPoint = nodeCenter(subcategoryButton, bounds);
+        const subcategoryActive = selectedNode.id === subcategory.id || selectedNode.parentId === subcategory.id;
+        connect(categoryPoint, subcategoryPoint, subcategoryActive);
+        if (collapsedBranches.has(subcategory.id)) return;
+        subcategory.topics.forEach(function (topic) {
+          const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
+          if (!topicButton || topicButton.classList.contains("is-folded-away")) return;
+          connect(subcategoryPoint, nodeCenter(topicButton, bounds), selectedId === topic.id);
+        });
       });
     });
   }
@@ -353,6 +417,7 @@
 
     info.categories.forEach(function (category) {
       const categoryCollapsed = collapsedBranches.has(category.id);
+      const categoryFolded = rootCollapsed || categoryCollapsed;
       const categoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + category.id + '"]');
       if (categoryButton) {
         categoryButton.classList.toggle("is-folded-away", rootCollapsed);
@@ -371,20 +436,57 @@
 
       category.topics.forEach(function (topic) {
         const leafCollapsed = collapsedLeaves.has(topic.id);
-        const foldedAway = rootCollapsed || categoryCollapsed;
         const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
         if (topicButton) {
-          topicButton.classList.toggle("is-folded-away", foldedAway);
+          topicButton.classList.toggle("is-folded-away", categoryFolded);
           topicButton.classList.toggle("is-node-collapsed", leafCollapsed);
           topicButton.title = leafCollapsed ? topic.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기";
           topicButton.setAttribute("aria-label", topicButton.title);
         }
         const mobileTopic = mobileList.querySelector('.mobile-topic-node[data-node-id="' + topic.id + '"]');
         if (mobileTopic) {
+          mobileTopic.classList.toggle("is-folded-away", categoryFolded);
           mobileTopic.classList.toggle("is-node-collapsed", leafCollapsed);
           mobileTopic.title = leafCollapsed ? topic.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기";
           mobileTopic.setAttribute("aria-label", mobileTopic.title);
         }
+      });
+
+      (category.subcategories || []).forEach(function (subcategory) {
+        const subcategoryCollapsed = collapsedBranches.has(subcategory.id);
+        const subcategoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + subcategory.id + '"]');
+        if (subcategoryButton) {
+          subcategoryButton.classList.toggle("is-folded-away", categoryFolded);
+          subcategoryButton.classList.toggle("is-branch-collapsed", subcategoryCollapsed);
+          subcategoryButton.title = subcategoryCollapsed ? subcategory.title + " 가지가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 " + subcategory.title + "의 세부 노드 접기";
+          subcategoryButton.setAttribute("aria-label", subcategoryButton.title);
+        }
+        const mobileSubcategory = mobileList.querySelector('.mobile-category[data-category-id="' + subcategory.id + '"]');
+        if (mobileSubcategory) {
+          mobileSubcategory.classList.toggle("is-folded-away", categoryFolded);
+          mobileSubcategory.classList.toggle("is-branch-collapsed", subcategoryCollapsed);
+        }
+        const mobileSubcategoryTopics = mobileSubcategory && mobileSubcategory.querySelector(":scope > .mobile-topic-list");
+        if (mobileSubcategoryTopics) mobileSubcategoryTopics.classList.toggle("is-folded-away", subcategoryCollapsed);
+
+        subcategory.topics.forEach(function (topic) {
+          const leafCollapsed = collapsedLeaves.has(topic.id);
+          const foldedAway = categoryFolded || subcategoryCollapsed;
+          const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
+          if (topicButton) {
+            topicButton.classList.toggle("is-folded-away", foldedAway);
+            topicButton.classList.toggle("is-node-collapsed", leafCollapsed);
+            topicButton.title = leafCollapsed ? topic.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기";
+            topicButton.setAttribute("aria-label", topicButton.title);
+          }
+          const mobileTopic = mobileList.querySelector('.mobile-topic-node[data-node-id="' + topic.id + '"]');
+          if (mobileTopic) {
+            mobileTopic.classList.toggle("is-folded-away", foldedAway);
+            mobileTopic.classList.toggle("is-node-collapsed", leafCollapsed);
+            mobileTopic.title = leafCollapsed ? topic.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기";
+            mobileTopic.setAttribute("aria-label", mobileTopic.title);
+          }
+        });
       });
     });
 
@@ -422,34 +524,40 @@
     selectedId = id;
     closeDetail();
     applyCollapseState();
-    document.querySelectorAll(".map-node[data-node-id]").forEach(function (button) {
-      const active = button.dataset.nodeId === id;
-      const parentActive = node.kind === "topic" && button.dataset.nodeId === node.parentId;
-      button.classList.toggle("is-selected", active);
-      button.classList.toggle("is-branch-active", Boolean(parentActive));
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-    });
+    updateActiveNodeClasses(node);
   }
 
   function selectNode(id, options) {
     const node = nodeIndex.get(id);
     if (!node) return;
     let revealed = false;
-    if (node.kind === "category") revealed = collapsedBranches.delete("home") || revealed;
+    const parentCategory = node.kind === "topic" ? findCategoryById(node.parentId) : (node.kind === "category" && node.parentId ? findCategoryById(node.parentId) : null);
+    const topLevelCategory = getTopLevelCategory(parentCategory || (node.kind === "category" ? node : null));
+    if (node.kind === "category") {
+      revealed = collapsedBranches.delete("home") || revealed;
+      if (node.parentId) revealed = collapsedBranches.delete(node.parentId) || revealed;
+    }
     if (node.kind === "topic") {
       revealed = collapsedBranches.delete("home") || revealed;
       revealed = collapsedBranches.delete(node.parentId) || revealed;
+      if (topLevelCategory) revealed = collapsedBranches.delete(topLevelCategory.id) || revealed;
       revealed = collapsedLeaves.delete(id) || revealed;
+    }
+    if (topLevelCategory) {
+      const mobileTopLevel = mobileList.querySelector('.mobile-category[data-category-id="' + topLevelCategory.id + '"]');
+      if (mobileTopLevel) mobileTopLevel.open = true;
+      if (parentCategory && parentCategory.id !== topLevelCategory.id) {
+        const mobileParentCategory = mobileList.querySelector('.mobile-category[data-category-id="' + parentCategory.id + '"]');
+        if (mobileParentCategory) mobileParentCategory.open = true;
+      }
+      if (node.kind === "category" && node.id !== topLevelCategory.id) {
+        const mobileSelectedCategory = mobileList.querySelector('.mobile-category[data-category-id="' + node.id + '"]');
+        if (mobileSelectedCategory) mobileSelectedCategory.open = true;
+      }
     }
     if (revealed) applyCollapseState();
     selectedId = id;
-    document.querySelectorAll(".map-node[data-node-id]").forEach(function (button) {
-      const active = button.dataset.nodeId === id;
-      const parentActive = node.kind === "topic" && button.dataset.nodeId === node.parentId;
-      button.classList.toggle("is-selected", active);
-      button.classList.toggle("is-branch-active", Boolean(parentActive));
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-    });
+    updateActiveNodeClasses(node);
     updateDetail(node);
     requestAnimationFrame(drawConnections);
     if (options && options.openDetail) {
@@ -463,9 +571,40 @@
     detailCard.setAttribute("aria-hidden", "true");
   }
 
+  function findCategoryById(id) {
+    for (const category of info.categories) {
+      if (category.id === id) return category;
+      const subcategory = (category.subcategories || []).find(function (item) { return item.id === id; });
+      if (subcategory) return subcategory;
+    }
+    return null;
+  }
+
+  function getTopLevelCategory(category) {
+    if (!category) return null;
+    return category.parentId ? findCategoryById(category.parentId) : category;
+  }
+
+  function updateActiveNodeClasses(node) {
+    const parentIds = new Set();
+    if (node.kind === "category" && node.parentId) parentIds.add(node.parentId);
+    if (node.kind === "topic") {
+      if (node.parentId) parentIds.add(node.parentId);
+      if (node.topLevelParentId) parentIds.add(node.topLevelParentId);
+    }
+    document.querySelectorAll(".map-node[data-node-id]").forEach(function (button) {
+      const active = button.dataset.nodeId === node.id;
+      const parentActive = parentIds.has(button.dataset.nodeId);
+      button.classList.toggle("is-selected", active);
+      button.classList.toggle("is-branch-active", parentActive);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
   function updateDetail(node) {
     const isRoot = node.id === "home";
-    const category = node.kind === "topic" ? info.categories.find(function (item) { return item.id === node.parentId; }) : node;
+    const category = node.kind === "topic" ? findCategoryById(node.parentId) : (node.kind === "category" ? node : null);
+    const topLevelCategory = getTopLevelCategory(category);
     const title = document.getElementById("detail-title");
     const summary = document.getElementById("detail-summary");
     const breadcrumb = document.getElementById("breadcrumb");
@@ -488,18 +627,17 @@
       crumb.textContent = "홈";
       breadcrumb.append(slash, crumb);
     } else {
-      const slash = document.createElement("span");
-      slash.textContent = "/";
-      const categoryCrumb = document.createElement("span");
-      categoryCrumb.textContent = node.kind === "topic" ? category.title : node.title;
-      breadcrumb.append(slash, categoryCrumb);
-      if (node.kind === "topic") {
-        const topicSlash = document.createElement("span");
-        topicSlash.textContent = "/";
-        const topicCrumb = document.createElement("span");
-        topicCrumb.textContent = node.title;
-        breadcrumb.append(topicSlash, topicCrumb);
-      }
+      const crumbs = [];
+      if (topLevelCategory) crumbs.push(topLevelCategory);
+      if (category && topLevelCategory && category.id !== topLevelCategory.id) crumbs.push(category);
+      if (node.kind === "topic") crumbs.push(node);
+      crumbs.forEach(function (crumb) {
+        const slash = document.createElement("span");
+        slash.textContent = "/";
+        const crumbLabel = document.createElement("span");
+        crumbLabel.textContent = crumb.title;
+        breadcrumb.append(slash, crumbLabel);
+      });
     }
 
     content.replaceChildren();
@@ -516,7 +654,7 @@
       content.appendChild(heading);
       const items = document.createElement("div");
       items.className = "detail-topic-list";
-      const children = isRoot ? info.categories : node.topics;
+      const children = isRoot ? info.categories : node.topics.concat(node.subcategories || []);
       children.forEach(function (child) {
         const item = document.createElement("button");
         item.type = "button";
@@ -533,13 +671,14 @@
       content.appendChild(items);
     }
 
-    const sourceOwner = node.kind === "topic" ? node : category;
-    const sourceEntries = isRoot ? [] : (
-      (Array.isArray(sourceOwner.sources) && sourceOwner.sources.length ? sourceOwner.sources : null) ||
-      (sourceOwner.sourceUrl ? [{ label: "출처 페이지", url: sourceOwner.sourceUrl }] : null) ||
-      (Array.isArray(category.sources) && category.sources.length ? category.sources : null) ||
-      (category.sourceUrl ? [{ label: "출처 페이지", url: category.sourceUrl }] : [])
-    );
+    const sourceOwners = isRoot ? [] : [node.kind === "topic" ? node : null, category, topLevelCategory].filter(function (owner, index, owners) {
+      return owner && owners.indexOf(owner) === index;
+    });
+    let sourceEntries = [];
+    for (const owner of sourceOwners) {
+      if (Array.isArray(owner.sources) && owner.sources.length) { sourceEntries = owner.sources; break; }
+      if (owner.sourceUrl) { sourceEntries = [{ label: "출처 페이지", url: owner.sourceUrl }]; break; }
+    }
     const validSources = sourceEntries.map(function (item) {
       return { label: item.label || "출처 페이지", url: safeHttpUrl(item.url || item.sourceUrl) };
     }).filter(function (item) { return Boolean(item.url); });
@@ -558,7 +697,7 @@
     } else {
       source.textContent = "공식 자료를 확인한 뒤 링크를 추가해 주세요.";
     }
-    updated.textContent = (!isRoot && node.updatedAt) || (category && category.updatedAt) || info.updatedAt || "등록 전";
+    updated.textContent = (!isRoot && node.updatedAt) || (category && category.updatedAt) || (topLevelCategory && topLevelCategory.updatedAt) || info.updatedAt || "등록 전";
     resetArticleEditor();
     loadArticles(node.id);
   }
@@ -1036,6 +1175,13 @@
       category.topics.forEach(function (topic) {
         results.push({ node: topic, category: category.title, searchable: topic.title + " " + topic.summary + " " + category.title });
       });
+      (category.subcategories || []).forEach(function (subcategory) {
+        const path = category.title + " · " + subcategory.title;
+        results.push({ node: subcategory, category: path, searchable: subcategory.title + " " + subcategory.subtitle + " " + subcategory.summary + " " + category.title });
+        subcategory.topics.forEach(function (topic) {
+          results.push({ node: topic, category: path, searchable: topic.title + " " + topic.summary + " " + path });
+        });
+      });
     });
     return results;
   }
@@ -1051,6 +1197,7 @@
     matches.forEach(function (entry) {
       matchingIds.add(entry.node.id);
       if (entry.node.parentId) matchingIds.add(entry.node.parentId);
+      if (entry.node.topLevelParentId) matchingIds.add(entry.node.topLevelParentId);
     });
 
     document.querySelectorAll(".map-node[data-node-id]").forEach(function (button) {
@@ -1101,6 +1248,13 @@
   }
 
   explorerLayout.addEventListener("click", function (event) {
+    const mapNode = event.target.closest(".root-node, .category-node, .topic-node");
+    if (suppressedDragClick && mapNode && mapNode.dataset.nodeId === suppressedDragClick) {
+      event.preventDefault();
+      suppressedDragClick = null;
+      window.clearTimeout(suppressedDragClickTimer);
+      return;
+    }
     const button = event.target.closest("[data-node-id]");
     if (!button) return;
     scheduleNodeClick(button.dataset.nodeId);
@@ -1130,6 +1284,51 @@
     if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= mapViewport.clientHeight;
     setMapZoom(mapZoom * Math.exp(-delta * 0.001), event.clientX, event.clientY);
   }, { passive: false });
+  mapViewport.addEventListener("pointerdown", function (event) {
+    if (event.pointerType !== "mouse" || event.button !== 0 || event.isPrimary === false) return;
+    window.clearTimeout(suppressedDragClickTimer);
+    suppressedDragClick = null;
+    const node = event.target.closest(".root-node, .category-node, .topic-node");
+    mapPan = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollLeft: mapViewport.scrollLeft,
+      startScrollTop: mapViewport.scrollTop,
+      nodeId: node && node.dataset.nodeId,
+      moved: false
+    };
+  });
+  window.addEventListener("pointermove", function (event) {
+    if (!mapPan || event.pointerId !== mapPan.pointerId) return;
+    const deltaX = event.clientX - mapPan.startX;
+    const deltaY = event.clientY - mapPan.startY;
+    if (!mapPan.moved && Math.hypot(deltaX, deltaY) < 4) return;
+    if (!mapPan.moved && mapPan.nodeId) clearPendingClick(mapPan.nodeId);
+    mapPan.moved = true;
+    mapViewport.classList.add("is-panning");
+    mapViewport.scrollLeft = mapPan.startScrollLeft - deltaX;
+    mapViewport.scrollTop = mapPan.startScrollTop - deltaY;
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount) selection.removeAllRanges();
+    event.preventDefault();
+  });
+  function finishMapPan(event) {
+    if (!mapPan || event.pointerId !== mapPan.pointerId) return;
+    const finishedPan = mapPan;
+    mapPan = null;
+    mapViewport.classList.remove("is-panning");
+    if (event.type === "pointerup" && finishedPan.moved && finishedPan.nodeId) {
+      suppressedDragClick = finishedPan.nodeId;
+      suppressedDragClickTimer = window.setTimeout(function () { suppressedDragClick = null; }, 400);
+    }
+  }
+  window.addEventListener("pointerup", finishMapPan);
+  window.addEventListener("pointercancel", finishMapPan);
+  window.addEventListener("blur", function () {
+    mapPan = null;
+    mapViewport.classList.remove("is-panning");
+  });
   mapZoomOut.addEventListener("click", function () { setMapZoom(mapZoom / 1.15); });
   mapZoomIn.addEventListener("click", function () { setMapZoom(mapZoom * 1.15); });
   mapZoomReset.addEventListener("click", function () { setMapZoom(1); });
