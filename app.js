@@ -68,6 +68,8 @@
   let mapZoomOffsetX = 0;
   let mapZoomOffsetY = 0;
   let mapContentMarginLeft = 0;
+  let mapPanOffsetX = 0;
+  let mapPanOffsetY = 0;
   let mapPan = null;
   let suppressedDragClick = null;
   let suppressedDragClickTimer = null;
@@ -152,7 +154,7 @@
     mapContentMarginLeft = Math.max(0, (mapViewport.clientWidth - layoutWidth) / 2);
     mapScrollContent.style.marginLeft = mapContentMarginLeft + "px";
     mapScrollContent.style.marginRight = mapContentMarginLeft + "px";
-    mapStage.style.transform = "translate(" + mapZoomOffsetX + "px, " + mapZoomOffsetY + "px) scale(" + mapZoom + ")";
+    mapStage.style.transform = "translate(" + (mapZoomOffsetX + mapPanOffsetX) + "px, " + (mapZoomOffsetY + mapPanOffsetY) + "px) scale(" + mapZoom + ")";
     mapZoomLevel.textContent = Math.round(mapZoom * 100) + "%";
   }
 
@@ -164,8 +166,8 @@
     const viewportBounds = mapViewport.getBoundingClientRect();
     const anchorX = clientX == null ? mapViewport.clientWidth / 2 : clientX - viewportBounds.left;
     const anchorY = clientY == null ? mapViewport.clientHeight / 2 : clientY - viewportBounds.top;
-    const previousOffsetX = mapContentMarginLeft + mapZoomOffsetX;
-    const previousOffsetY = mapZoomOffsetY;
+    const previousOffsetX = mapContentMarginLeft + mapZoomOffsetX + mapPanOffsetX;
+    const previousOffsetY = mapZoomOffsetY + mapPanOffsetY;
     const previousScrollLeft = mapViewport.scrollLeft;
     const previousScrollTop = mapViewport.scrollTop;
     const scaleRatio = clampedZoom / previousZoom;
@@ -173,8 +175,8 @@
     mapZoom = clampedZoom;
     syncMapZoomLayout();
 
-    const nextOffsetX = mapContentMarginLeft + mapZoomOffsetX;
-    const nextOffsetY = mapZoomOffsetY;
+    const nextOffsetX = mapContentMarginLeft + mapZoomOffsetX + mapPanOffsetX;
+    const nextOffsetY = mapZoomOffsetY + mapPanOffsetY;
     mapViewport.scrollLeft = (previousScrollLeft + anchorX - previousOffsetX) * scaleRatio + nextOffsetX - anchorX;
     mapViewport.scrollTop = (previousScrollTop + anchorY - previousOffsetY) * scaleRatio + nextOffsetY - anchorY;
   }
@@ -1293,8 +1295,8 @@
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      startScrollLeft: mapViewport.scrollLeft,
-      startScrollTop: mapViewport.scrollTop,
+      startPanOffsetX: mapPanOffsetX,
+      startPanOffsetY: mapPanOffsetY,
       nodeId: node && node.dataset.nodeId,
       moved: false
     };
@@ -1307,8 +1309,9 @@
     if (!mapPan.moved && mapPan.nodeId) clearPendingClick(mapPan.nodeId);
     mapPan.moved = true;
     mapViewport.classList.add("is-panning");
-    mapViewport.scrollLeft = mapPan.startScrollLeft - deltaX;
-    mapViewport.scrollTop = mapPan.startScrollTop - deltaY;
+    mapPanOffsetX = mapPan.startPanOffsetX + deltaX;
+    mapPanOffsetY = mapPan.startPanOffsetY + deltaY;
+    syncMapZoomLayout();
     const selection = window.getSelection();
     if (selection && selection.rangeCount) selection.removeAllRanges();
     event.preventDefault();
@@ -1331,7 +1334,14 @@
   });
   mapZoomOut.addEventListener("click", function () { setMapZoom(mapZoom / 1.15); });
   mapZoomIn.addEventListener("click", function () { setMapZoom(mapZoom * 1.15); });
-  mapZoomReset.addEventListener("click", function () { setMapZoom(1); });
+  mapZoomReset.addEventListener("click", function () {
+    mapPanOffsetX = 0;
+    mapPanOffsetY = 0;
+    setMapZoom(1);
+    syncMapZoomLayout();
+    mapViewport.scrollLeft = 0;
+    mapViewport.scrollTop = 0;
+  });
 
   searchInput.addEventListener("input", updateSearch);
   searchResults.addEventListener("click", function (event) {
