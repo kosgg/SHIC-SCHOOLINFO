@@ -5,6 +5,7 @@ Published articles remain readable without signing in. Google sign-in lets users
 ## Database setup
 
 - For the existing Supabase project, run `supabase/migrations/20261109_admin_writing_window.sql` in its SQL Editor. It adds a closed writing-period setting and replaces the old write policies without deleting article rows or the existing writer allowlist.
+- To enable adding child nodes to the map, also run `supabase/migrations/20261112_add_school_map_nodes.sql`. It creates a public-readable node table and permits inserts only for Google-authenticated users while the writing period is open.
 - For a new project, run `supabase/schema.sql`.
 - The old `private.writer_allowlist` table and its rows are retained for compatibility. Current policies do not read it. The old `is_authorized_writer()` RPC is revoked from client roles by the migration.
 

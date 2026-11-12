@@ -207,6 +207,7 @@ a { color: inherit; }
   .mobile-category-overview .node-copy { display: block; }
   .mobile-category-overview .node-caption { display: none; }
   .mobile-topic-list { display: grid; gap: 5px; padding: 0 10px 11px 51px; }
+.mobile-nested-topic-list { padding-left: 18px; }
   .mobile-topic-node { display: flex; align-items: center; justify-content: space-between; min-height: 37px; padding: 7px 9px; border: 1px solid #e8eee6; border-radius: 8px; color: #64766a; background: #fff; font-size: 9px; text-align: left; }
   .mobile-topic-node > span:last-child { color: #a0b99d; font-size: 11px; }
   .mobile-topic-node.is-selected, .mobile-category-overview.is-selected { border-color: #85ad89; color: #345c42; background: #f1f8ee; }
@@ -403,15 +404,18 @@ html[data-theme="night"] .detail-close:hover { border-color: #6c9eb0; color: #e9
 .topic-node.is-node-collapsed { display: flex; width: 28px; min-height: 28px; padding: 0; overflow: hidden; border-radius: 50%; }
 .topic-node.is-node-collapsed .node-copy { display: none; }
 .topic-node.is-node-collapsed::before { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; border-radius: 50%; color: #628360; background: transparent; content: "+"; font-size: 14px; }
+.topic-node.is-branch-collapsed::after { position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 17px; height: 17px; border: 1px solid #a9c9a4; border-radius: 50%; color: #557d58; background: #f4f8ed; content: "+"; font-size: 11px; font-weight: 800; }
 .mobile-category.is-branch-collapsed > summary .mobile-chevron::after { margin-left: 4px; color: #739a70; content: "+"; font-size: 12px; font-weight: 700; }
 .mobile-topic-node.is-node-collapsed { display: flex; justify-content: center; width: 28px; min-height: 28px; margin: 3px auto; padding: 0; overflow: hidden; border-radius: 50%; }
 .mobile-topic-node.is-node-collapsed span { display: none; }
 .mobile-topic-node.is-node-collapsed::before { color: #628360; content: "+"; font-size: 14px; }
+.mobile-topic-node.is-branch-collapsed::after { display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid #a9c9a4; border-radius: 50%; color: #557d58; background: #f4f8ed; content: "+"; font-size: 11px; font-weight: 800; }
 .mobile-home-node { position: relative; }
 .mobile-home-node.is-branch-collapsed::after { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid rgba(231, 245, 216, .65); border-radius: 50%; color: #eff9dd; content: "+"; font-size: 12px; font-weight: 700; }
 html[data-theme="night"] .root-node.is-branch-collapsed::after { border-color: #a791f0; color: #ddd4ff; background: #302763; }
 html[data-theme="night"] .category-node.is-branch-collapsed::after { border-color: #72bad5; color: #d7f4ff; background: #1b4059; }
 html[data-theme="night"] .topic-node.is-node-collapsed::before, html[data-theme="night"] .mobile-topic-node.is-node-collapsed::before { color: #a2d8bd; }
+html[data-theme="night"] .topic-node.is-branch-collapsed::after, html[data-theme="night"] .mobile-topic-node.is-branch-collapsed::after { border-color: #72bad5; color: #d7f4ff; background: #1b4059; }
 
 /* Public reading and approved writer controls */
 .auth-actions { display: inline-flex; align-items: center; gap: 7px; }
@@ -437,7 +441,7 @@ html[data-theme="night"] .topic-node.is-node-collapsed::before, html[data-theme=
 .article-card-actions { display: flex; gap: 6px; margin-top: 9px; padding-top: 8px; border-top: 1px solid #e9eee8; }
 .article-card-actions button { padding: 5px 9px; border: 1px solid #dce6dc; border-radius: 7px; color: #63776a; background: #fff; font-size: 9px; font-weight: 700; cursor: pointer; }
 .article-card-actions button:hover { border-color: #a9c4ad; color: #315b44; }
-.writer-tools { display: flex; }
+.writer-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .new-article-button { width: 100%; min-height: 38px; border: 1px solid #b7d0bc; border-radius: 10px; color: #315e45; background: #eff6ed; font-size: 11px; font-weight: 750; cursor: pointer; }
 .new-article-button:hover { border-color: #86b28f; background: #e4f0e1; }
 .article-form { display: grid; gap: 7px; padding: 12px; border: 1px solid #dce7dc; border-radius: 12px; background: #f9fbf8; }
@@ -449,6 +453,8 @@ html[data-theme="night"] .topic-node.is-node-collapsed::before, html[data-theme=
 .article-form textarea { min-height: 105px; resize: vertical; }
 .article-form input:focus, .article-form textarea:focus { border-color: #8cb598; outline: 3px solid rgba(83,143,100,.12); }
 .article-form .publish-toggle { display: flex; align-items: center; gap: 7px; margin: 5px 0; color: #526b5a; font-size: 10px; font-weight: 650; }
+.child-node-parent-label { margin: 0 0 2px; padding: 7px 9px; border-radius: 8px; color: #587263; background: #edf4ea; font-size: 10px; font-weight: 750; }
+.child-node-note { margin: 0; color: #829086; font-size: 9px; line-height: 1.5; }
 .publish-toggle input { accent-color: #4b8961; }
 .article-form-actions { display: flex; gap: 7px; }
 .article-form-actions button { min-height: 35px; flex: 1; border: 1px solid #d9e3d8; border-radius: 8px; color: #5d7063; background: #fff; font-size: 10px; font-weight: 750; cursor: pointer; }
@@ -495,6 +501,8 @@ html[data-theme="night"] .article-form { border-color: #2c4c63; background: #0e2
 html[data-theme="night"] .article-form > label { color: #b8cbd3; }
 html[data-theme="night"] .article-form input:not([type="checkbox"]), html[data-theme="night"] .article-form textarea { border-color: #35556b; color: #e0edf4; background: #0a2035; }
 html[data-theme="night"] .article-form .publish-toggle { color: #c2d4dc; }
+html[data-theme="night"] .child-node-parent-label { color: #c6ded0; background: #183d3c; }
+html[data-theme="night"] .child-node-note { color: #9fb3c1; }
 html[data-theme="night"] .article-form-actions .save-article-button { border-color: #4f9471; color: #f2fff7; background: #34704f; }
 html[data-theme="night"] .app-toast { border-color: #34536a; color: #e0edf4; background: rgba(13,34,56,.97); box-shadow: 0 12px 35px rgba(0,0,0,.32); }
 html[data-theme="night"] .writing-status { border-color: #29475a; color: #a9becb; background: rgba(13,34,56,.9); }
@@ -514,5 +522,6 @@ html[data-theme="night"] .admin-dialog-note { color: #9fb3c1; }
   .login-button, .logout-button, .admin-settings-button { min-height: 34px; padding: 0 8px; font-size: 9px; }
   .admin-settings-dialog { padding: 18px; }
   .articles-panel { margin-top: 15px; }
+  .writer-tools { grid-template-columns: 1fr; }
   .app-toast { right: 12px; bottom: 12px; font-size: 11px; }
 }

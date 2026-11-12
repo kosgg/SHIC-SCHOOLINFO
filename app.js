@@ -44,9 +44,13 @@
   const articleCount = document.getElementById("article-count");
   const writerTools = document.getElementById("writer-tools");
   const newArticleButton = document.getElementById("new-article-button");
+  const newChildNodeButton = document.getElementById("new-child-node-button");
   const articleForm = document.getElementById("article-form");
+  const childNodeForm = document.getElementById("child-node-form");
+  const childNodeParentLabel = document.getElementById("child-node-parent-label");
   const appToast = document.getElementById("app-toast");
   const nodeIndex = new Map([[rootNode.id, rootNode]]);
+  const nodeChildren = new Map();
   const collapsedBranches = new Set();
   const collapsedLeaves = new Set();
   const pendingClicks = new Map();
@@ -61,6 +65,9 @@
   let currentArticles = [];
   let editingArticleId = null;
   let articleLoadToken = 0;
+  let customMapNodes = [];
+  let customNodeLoadToken = 0;
+  let childNodeParentId = null;
   let toastTimer = null;
   let mapZoom = 1;
   let mapBaseWidth = 760;
@@ -181,36 +188,207 @@
     mapViewport.scrollTop = (previousScrollTop + anchorY - previousOffsetY) * scaleRatio + nextOffsetY - anchorY;
   }
 
+  function addNodeToTree(node, parentId, kind) {
+    if (!nodeIndex.has(parentId)) return false;
+    node.kind = kind;
+    node.parentId = parentId;
+    nodeIndex.set(node.id, node);
+    if (!nodeChildren.has(node.id)) nodeChildren.set(node.id, []);
+    if (!nodeChildren.has(parentId)) nodeChildren.set(parentId, []);
+    nodeChildren.get(parentId).push(node);
+    return true;
+  }
+
+  function buildNodeTree() {
+    nodeIndex.clear();
+    nodeChildren.clear();
+    nodeIndex.set(rootNode.id, rootNode);
+    nodeChildren.set(rootNode.id, []);
+    info.categories.forEach(function (category) {
+      category.topLevelParentId = category.id;
+      addNodeToTree(category, rootNode.id, "category");
+      category.topics.forEach(function (topic, index) {
+        topic.number = category.number + "." + String(index + 1).padStart(2, "0");
+        topic.topLevelParentId = category.id;
+        topic.parentTitle = category.title;
+        addNodeToTree(topic, category.id, "topic");
+      });
+      (category.subcategories || []).forEach(function (subcategory) {
+        subcategory.topLevelParentId = category.id;
+        addNodeToTree(subcategory, category.id, "category");
+        subcategory.topics.forEach(function (topic, index) {
+          topic.number = subcategory.number + "." + String(index + 1).padStart(2, "0");
+          topic.topLevelParentId = category.id;
+          topic.parentTitle = subcategory.title;
+          addNodeToTree(topic, subcategory.id, "topic");
+        });
+      });
+    });
+
+    const pending = customMapNodes.slice();
+    let added = true;
+    while (pending.length && added) {
+      added = false;
+      for (let index = pending.length - 1; index >= 0; index -= 1) {
+        const row = pending[index];
+        if (!nodeIndex.has(row.parent_node_id)) continue;
+        const node = {
+          id: String(row.id),
+          title: row.title,
+          number: "＋",
+          summary: row.summary,
+          guidance: row.guidance || "",
+          sourceUrl: row.source_url || "",
+          updatedAt: row.created_at ? formatArticleDate(row.created_at) : "",
+          authorId: row.author_id,
+          custom: true
+        };
+        const parent = nodeIndex.get(row.parent_node_id);
+        node.topLevelParentId = parent.topLevelParentId || (parent.id !== "home" ? parent.id : "");
+        node.parentTitle = parent.title;
+        addNodeToTree(node, row.parent_node_id, "topic");
+        pending.splice(index, 1);
+        added = true;
+      }
+    }
+  }
+
+  function getNodeChildren(nodeOrId) {
+    const id = typeof nodeOrId === "string" ? nodeOrId : nodeOrId && nodeOrId.id;
+    return nodeChildren.get(id) || [];
+  }
+
+  function getNodePath(node) {
+    const path = [];
+    let current = node;
+    while (current && current.id !== "home") {
+      path.unshift(current);
+      current = nodeIndex.get(current.parentId);
+    }
+    return path;
+  }
+
   function updateGraphLayout() {
-    mapBaseWidth = Math.min(1800, Math.max(1200, mapViewport.clientWidth));
-    mapBaseHeight = Math.max(1000, mapViewport.clientHeight);
+    const maxDepth = customMapNodes.reduce(function (max, row) {
+      let depth = 0;
+      let current = nodeIndex.get(row.parent_node_id);
+      while (current && current.id !== "home") {
+        depth += 1;
+        current = nodeIndex.get(current.parentId);
+      }
+      return Math.max(max, depth + 1);
+    }, 0);
+    const largestCustomBranch = Array.from(nodeChildren.values()).reduce(function (max, children) {
+      return Math.max(max, children.filter(function (child) { return child.custom; }).length);
+    }, 0);
+    const baseWidth = Math.min(1800, Math.max(1200, mapViewport.clientWidth));
+    const baseHeight = Math.max(1000, mapViewport.clientHeight);
+    const reserveWidth = maxDepth * 500;
+    const reserveHeight = maxDepth * 100 + Math.max(0, largestCustomBranch - 1) * 84;
+    mapBaseWidth = baseWidth + reserveWidth;
+    mapBaseHeight = baseHeight + reserveHeight;
     mapStage.style.width = mapBaseWidth + "px";
     mapStage.style.minWidth = mapBaseWidth + "px";
     mapStage.style.height = mapBaseHeight + "px";
     syncMapZoomLayout();
+
     const layout = graphPositions(mapBaseWidth, mapBaseHeight);
+    const shiftX = reserveWidth / 2;
+    const shiftY = reserveHeight / 2;
+    const positions = new Map();
+    const shifted = function (point) { return [point[0] - shiftX, point[1] - shiftY]; };
+    positions.set("home", shifted(layout.home.root));
     const rootButton = mapStage.querySelector('[data-node-id="home"]');
-    if (rootButton) placeNode(rootButton, layout.home.root);
+    if (rootButton) placeNode(rootButton, positions.get("home"));
     info.categories.forEach(function (category) {
+      const categoryPoint = shifted(layout[category.id].category);
+      positions.set(category.id, categoryPoint);
       const categoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + category.id + '"]');
-      if (categoryButton) placeNode(categoryButton, layout[category.id].category);
+      if (categoryButton) placeNode(categoryButton, categoryPoint);
       category.topics.forEach(function (topic, index) {
+        const point = shifted(layout[category.id].topics[index]);
+        positions.set(topic.id, point);
         const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
-        if (topicButton) placeNode(topicButton, layout[category.id].topics[index]);
+        if (topicButton) placeNode(topicButton, point);
       });
       (category.subcategories || []).forEach(function (subcategory) {
-        const subcategoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + subcategory.id + '"]');
         const subcategoryLayout = layout[category.id].subcategories[subcategory.id];
-        if (subcategoryButton) placeNode(subcategoryButton, subcategoryLayout.category);
+        const subcategoryPoint = shifted(subcategoryLayout.category);
+        positions.set(subcategory.id, subcategoryPoint);
+        const subcategoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + subcategory.id + '"]');
+        if (subcategoryButton) placeNode(subcategoryButton, subcategoryPoint);
         subcategory.topics.forEach(function (topic, index) {
+          const point = shifted(subcategoryLayout.topics[index]);
+          positions.set(topic.id, point);
           const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
-          if (topicButton) placeNode(topicButton, subcategoryLayout.topics[index]);
+          if (topicButton) placeNode(topicButton, point);
         });
       });
+    });
+
+    function pointIsAvailable(point, nodeId) {
+      const button = branchesLayer.querySelector('[data-node-id="' + nodeId + '"]');
+      const width = button ? button.offsetWidth : 126;
+      const height = button ? button.offsetHeight : 48;
+      if (point[0] < width / 2 + 20 || point[0] > mapBaseWidth - width / 2 - 20) return false;
+      if (point[1] < height / 2 + 20 || point[1] > mapBaseHeight - height / 2 - 20) return false;
+      let available = true;
+      positions.forEach(function (otherPoint, otherId) {
+        if (!available || otherId === nodeId) return;
+        const other = branchesLayer.querySelector('[data-node-id="' + otherId + '"]') || mapStage.querySelector('[data-node-id="' + otherId + '"]');
+        const otherWidth = other ? other.offsetWidth : 126;
+        const otherHeight = other ? other.offsetHeight : 48;
+        if (Math.abs(point[0] - otherPoint[0]) < (width + otherWidth) / 2 + 14
+          && Math.abs(point[1] - otherPoint[1]) < (height + otherHeight) / 2 + 14) available = false;
+      });
+      return available;
+    }
+
+    function placeCustomChildren(parentId, visited) {
+      if (visited.has(parentId)) return;
+      visited.add(parentId);
+      const children = getNodeChildren(parentId).filter(function (node) { return node.custom; });
+      const parentPoint = positions.get(parentId);
+      if (!parentPoint) return;
+      children.forEach(function (node, index) {
+        const fanOffset = (index - (children.length - 1) / 2) * 86;
+        const directions = [
+          [1, 0, 0, 1], [0, 1, -1, 0], [0, -1, 1, 0], [-1, 0, 0, -1]
+        ];
+        let point = null;
+        for (const distance of [190, 250, 310, 370]) {
+          for (const direction of directions) {
+            const candidate = [
+              parentPoint[0] + direction[0] * distance + direction[2] * fanOffset,
+              parentPoint[1] + direction[1] * distance + direction[3] * fanOffset
+            ];
+            if (pointIsAvailable(candidate, node.id)) {
+              point = candidate;
+              break;
+            }
+          }
+          if (point) break;
+        }
+        if (!point) point = [parentPoint[0] + 190, parentPoint[1] + fanOffset];
+        positions.set(node.id, point);
+        const button = branchesLayer.querySelector('.topic-node[data-node-id="' + node.id + '"]');
+        if (button) placeNode(button, point);
+        placeCustomChildren(node.id, visited);
+      });
+    }
+    placeCustomChildren("home", new Set());
+    info.categories.forEach(function (category) {
+      placeCustomChildren(category.id, new Set());
+      (category.subcategories || []).forEach(function (subcategory) {
+        placeCustomChildren(subcategory.id, new Set());
+        subcategory.topics.forEach(function (topic) { placeCustomChildren(topic.id, new Set()); });
+      });
+      category.topics.forEach(function (topic) { placeCustomChildren(topic.id, new Set()); });
     });
   }
 
   function renderTree() {
+    buildNodeTree();
     branchesLayer.replaceChildren();
     mobileList.replaceChildren();
 
@@ -234,50 +412,48 @@
     mobileHome.append(mobileHomeMark, mobileHomeCopy, mobileHomeArrow);
     mobileList.appendChild(mobileHome);
 
-    info.categories.forEach(function (category, categoryIndex) {
-      category.kind = "category";
-      nodeIndex.set(category.id, category);
-      const categoryButton = makeNodeButton(category, "category-node", category.number);
-      categoryButton.dataset.categoryId = category.id;
-      branchesLayer.appendChild(categoryButton);
-
-      category.topLevelParentId = category.id;
-      category.topics.forEach(function (topic, topicIndex) {
-        registerTopicNode(topic, category, category, topicIndex);
-      });
-
-      const mobileCategory = renderMobileCategory(category, categoryIndex === 0, mobileList);
-      (category.subcategories || []).forEach(function (subcategory) {
-        subcategory.kind = "category";
-        subcategory.parentId = category.id;
-        subcategory.topLevelParentId = category.id;
-        nodeIndex.set(subcategory.id, subcategory);
-        const subcategoryButton = makeNodeButton(subcategory, "category-node subcategory-node", subcategory.number);
-        subcategoryButton.dataset.categoryId = category.id;
-        branchesLayer.appendChild(subcategoryButton);
-
-        subcategory.topics.forEach(function (topic, topicIndex) {
-          registerTopicNode(topic, subcategory, category, topicIndex);
-        });
-        const mobileTopics = mobileCategory.querySelector(":scope > .mobile-topic-list");
-        renderMobileCategory(subcategory, false, mobileTopics);
-      });
+    function renderDesktopNode(node) {
+      const className = node.kind === "category"
+        ? (node.parentId === "home" ? "category-node" : "category-node subcategory-node")
+        : "topic-node";
+      const button = makeNodeButton(node, className, node.kind === "category" ? node.number : "");
+      button.dataset.categoryId = node.topLevelParentId || node.id;
+      branchesLayer.appendChild(button);
+      getNodeChildren(node).forEach(renderDesktopNode);
+    }
+    getNodeChildren("home").forEach(renderDesktopNode);
+    getNodeChildren("home").forEach(function (category, index) {
+      renderMobileCategory(category, index === 0, mobileList);
     });
 
     updateGraphLayout();
     requestAnimationFrame(drawConnections);
   }
 
-  function registerTopicNode(topic, parentCategory, topLevelCategory, topicIndex) {
-    topic.kind = "topic";
-    topic.parentId = parentCategory.id;
-    topic.parentTitle = parentCategory.title;
-    topic.topLevelParentId = topLevelCategory.id;
-    topic.number = parentCategory.number + "." + String(topicIndex + 1).padStart(2, "0");
-    nodeIndex.set(topic.id, topic);
-    const topicButton = makeNodeButton(topic, "topic-node");
-    topicButton.dataset.categoryId = topLevelCategory.id;
-    branchesLayer.appendChild(topicButton);
+  function renderMobileNode(node, parentContainer) {
+    if (node.kind === "category") {
+      renderMobileCategory(node, false, parentContainer);
+      return;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mobile-topic-node map-node";
+    button.dataset.nodeId = node.id;
+    const title = document.createElement("span");
+    title.textContent = node.title;
+    const arrow = document.createElement("span");
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.textContent = "↗";
+    button.append(title, arrow);
+    parentContainer.appendChild(button);
+    const children = getNodeChildren(node);
+    if (children.length) {
+      const childList = document.createElement("div");
+      childList.className = "mobile-topic-list mobile-nested-topic-list";
+      childList.dataset.parentNodeId = node.id;
+      children.forEach(function (child) { renderMobileNode(child, childList); });
+      parentContainer.appendChild(childList);
+    }
   }
 
   function renderMobileCategory(category, expanded, parentContainer) {
@@ -288,13 +464,13 @@
     const summary = document.createElement("summary");
     const number = document.createElement("span");
     number.className = "mobile-category-number";
-    number.textContent = category.number;
+    number.textContent = category.number || "＋";
     const categoryCopy = document.createElement("span");
     categoryCopy.className = "mobile-category-copy";
     const title = document.createElement("strong");
     title.textContent = category.title;
     const subtitle = document.createElement("span");
-    subtitle.textContent = category.subtitle;
+    subtitle.textContent = category.subtitle || category.summary;
     categoryCopy.append(title, subtitle);
     const chevron = document.createElement("span");
     chevron.className = "mobile-chevron";
@@ -306,19 +482,8 @@
 
     const topicList = document.createElement("div");
     topicList.className = "mobile-topic-list";
-    category.topics.forEach(function (topic) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "mobile-topic-node map-node";
-      button.dataset.nodeId = topic.id;
-      const topicTitle = document.createElement("span");
-      topicTitle.textContent = topic.title;
-      const arrow = document.createElement("span");
-      arrow.setAttribute("aria-hidden", "true");
-      arrow.textContent = "↗";
-      button.append(topicTitle, arrow);
-      topicList.appendChild(button);
-    });
+    topicList.dataset.parentNodeId = category.id;
+    getNodeChildren(category).forEach(function (node) { renderMobileNode(node, topicList); });
     details.appendChild(topicList);
     parentContainer.appendChild(details);
     return details;
@@ -370,35 +535,23 @@
 
     const rootButton = mapStage.querySelector('[data-node-id="home"]');
     if (!rootButton) return;
-    const rootPoint = nodeCenter(rootButton, bounds);
-    const selectedNode = nodeIndex.get(selectedId) || rootNode;
-
-    info.categories.forEach(function (category) {
-      const categoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + category.id + '"]');
-      if (!categoryButton || categoryButton.classList.contains("is-folded-away") || collapsedBranches.has("home")) return;
-      const categoryPoint = nodeCenter(categoryButton, bounds);
-      const isBranchActive = selectedNode.id === category.id || selectedNode.parentId === category.id || selectedNode.topLevelParentId === category.id;
-      connect(rootPoint, categoryPoint, isBranchActive);
-
-      if (collapsedBranches.has(category.id)) return;
-      category.topics.forEach(function (topic) {
-        const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
-        if (!topicButton || topicButton.classList.contains("is-folded-away")) return;
-        connect(categoryPoint, nodeCenter(topicButton, bounds), selectedId === topic.id);
-      });
-      (category.subcategories || []).forEach(function (subcategory) {
-        const subcategoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + subcategory.id + '"]');
-        if (!subcategoryButton || subcategoryButton.classList.contains("is-folded-away")) return;
-        const subcategoryPoint = nodeCenter(subcategoryButton, bounds);
-        const subcategoryActive = selectedNode.id === subcategory.id || selectedNode.parentId === subcategory.id;
-        connect(categoryPoint, subcategoryPoint, subcategoryActive);
-        if (collapsedBranches.has(subcategory.id)) return;
-        subcategory.topics.forEach(function (topic) {
-          const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
-          if (!topicButton || topicButton.classList.contains("is-folded-away")) return;
-          connect(subcategoryPoint, nodeCenter(topicButton, bounds), selectedId === topic.id);
-        });
-      });
+    function isOnSelectedPath(id) {
+      let current = nodeIndex.get(selectedId);
+      while (current) {
+        if (current.id === id) return true;
+        current = nodeIndex.get(current.parentId);
+      }
+      return false;
+    }
+    nodeIndex.forEach(function (node) {
+      if (node.id === "home" || !node.parentId) return;
+      const childButton = branchesLayer.querySelector('[data-node-id="' + node.id + '"]');
+      const parentButton = node.parentId === "home"
+        ? rootButton
+        : branchesLayer.querySelector('[data-node-id="' + node.parentId + '"]');
+      if (!childButton || !parentButton || childButton.classList.contains("is-folded-away") || parentButton.classList.contains("is-folded-away")) return;
+      if (collapsedBranches.has(node.parentId)) return;
+      connect(nodeCenter(parentButton, bounds), nodeCenter(childButton, bounds), isOnSelectedPath(node.id));
     });
   }
 
@@ -417,79 +570,42 @@
       mobileRootButton.setAttribute("aria-label", mobileRootButton.title);
     }
 
-    info.categories.forEach(function (category) {
-      const categoryCollapsed = collapsedBranches.has(category.id);
-      const categoryFolded = rootCollapsed || categoryCollapsed;
-      const categoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + category.id + '"]');
-      if (categoryButton) {
-        categoryButton.classList.toggle("is-folded-away", rootCollapsed);
-        categoryButton.classList.toggle("is-branch-collapsed", categoryCollapsed);
-        categoryButton.title = categoryCollapsed ? category.title + " 가지가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 " + category.title + "의 세부 노드 접기";
-        categoryButton.setAttribute("aria-label", categoryButton.title);
+    const hiddenByAncestor = new Set();
+    if (rootCollapsed) hiddenByAncestor.add("home");
+    nodeIndex.forEach(function (node) {
+      if (node.id === "home") return;
+      const hidden = hiddenByAncestor.has(node.parentId);
+      const hasChildren = getNodeChildren(node).length > 0;
+      const branchCollapsed = hasChildren && collapsedBranches.has(node.id);
+      const nodeCollapsed = !hasChildren && collapsedLeaves.has(node.id);
+      const desktopButton = branchesLayer.querySelector('[data-node-id="' + node.id + '"]');
+      if (desktopButton) {
+        desktopButton.classList.toggle("is-folded-away", hidden);
+        desktopButton.classList.toggle("is-branch-collapsed", branchCollapsed);
+        desktopButton.classList.toggle("is-node-collapsed", nodeCollapsed);
+        desktopButton.title = hasChildren
+          ? (branchCollapsed ? node.title + " 가지가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 " + node.title + "의 하위 노드 접기")
+          : (nodeCollapsed ? node.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기");
+        desktopButton.setAttribute("aria-label", desktopButton.title);
       }
 
-      const mobileCategory = mobileList.querySelector('.mobile-category[data-category-id="' + category.id + '"]');
+      const mobileButton = mobileList.querySelector('.mobile-topic-node[data-node-id="' + node.id + '"], .mobile-category-overview[data-node-id="' + node.id + '"]');
+      if (mobileButton) {
+        mobileButton.classList.toggle("is-folded-away", hidden);
+        mobileButton.classList.toggle("is-branch-collapsed", branchCollapsed);
+        mobileButton.classList.toggle("is-node-collapsed", nodeCollapsed);
+        mobileButton.title = desktopButton ? desktopButton.title : node.title;
+        mobileButton.setAttribute("aria-label", mobileButton.title);
+      }
+
+      const mobileCategory = mobileList.querySelector('.mobile-category[data-category-id="' + node.id + '"]');
       if (mobileCategory) {
-        mobileCategory.classList.toggle("is-folded-away", rootCollapsed);
-        mobileCategory.classList.toggle("is-branch-collapsed", categoryCollapsed);
+        mobileCategory.classList.toggle("is-folded-away", hidden);
+        mobileCategory.classList.toggle("is-branch-collapsed", branchCollapsed);
       }
-      const mobileTopics = mobileCategory && mobileCategory.querySelector(".mobile-topic-list");
-      if (mobileTopics) mobileTopics.classList.toggle("is-folded-away", categoryCollapsed);
-
-      category.topics.forEach(function (topic) {
-        const leafCollapsed = collapsedLeaves.has(topic.id);
-        const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
-        if (topicButton) {
-          topicButton.classList.toggle("is-folded-away", categoryFolded);
-          topicButton.classList.toggle("is-node-collapsed", leafCollapsed);
-          topicButton.title = leafCollapsed ? topic.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기";
-          topicButton.setAttribute("aria-label", topicButton.title);
-        }
-        const mobileTopic = mobileList.querySelector('.mobile-topic-node[data-node-id="' + topic.id + '"]');
-        if (mobileTopic) {
-          mobileTopic.classList.toggle("is-folded-away", categoryFolded);
-          mobileTopic.classList.toggle("is-node-collapsed", leafCollapsed);
-          mobileTopic.title = leafCollapsed ? topic.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기";
-          mobileTopic.setAttribute("aria-label", mobileTopic.title);
-        }
-      });
-
-      (category.subcategories || []).forEach(function (subcategory) {
-        const subcategoryCollapsed = collapsedBranches.has(subcategory.id);
-        const subcategoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + subcategory.id + '"]');
-        if (subcategoryButton) {
-          subcategoryButton.classList.toggle("is-folded-away", categoryFolded);
-          subcategoryButton.classList.toggle("is-branch-collapsed", subcategoryCollapsed);
-          subcategoryButton.title = subcategoryCollapsed ? subcategory.title + " 가지가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 " + subcategory.title + "의 세부 노드 접기";
-          subcategoryButton.setAttribute("aria-label", subcategoryButton.title);
-        }
-        const mobileSubcategory = mobileList.querySelector('.mobile-category[data-category-id="' + subcategory.id + '"]');
-        if (mobileSubcategory) {
-          mobileSubcategory.classList.toggle("is-folded-away", categoryFolded);
-          mobileSubcategory.classList.toggle("is-branch-collapsed", subcategoryCollapsed);
-        }
-        const mobileSubcategoryTopics = mobileSubcategory && mobileSubcategory.querySelector(":scope > .mobile-topic-list");
-        if (mobileSubcategoryTopics) mobileSubcategoryTopics.classList.toggle("is-folded-away", subcategoryCollapsed);
-
-        subcategory.topics.forEach(function (topic) {
-          const leafCollapsed = collapsedLeaves.has(topic.id);
-          const foldedAway = categoryFolded || subcategoryCollapsed;
-          const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
-          if (topicButton) {
-            topicButton.classList.toggle("is-folded-away", foldedAway);
-            topicButton.classList.toggle("is-node-collapsed", leafCollapsed);
-            topicButton.title = leafCollapsed ? topic.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기";
-            topicButton.setAttribute("aria-label", topicButton.title);
-          }
-          const mobileTopic = mobileList.querySelector('.mobile-topic-node[data-node-id="' + topic.id + '"]');
-          if (mobileTopic) {
-            mobileTopic.classList.toggle("is-folded-away", foldedAway);
-            mobileTopic.classList.toggle("is-node-collapsed", leafCollapsed);
-            mobileTopic.title = leafCollapsed ? topic.title + " 노드가 접혔어요. 더블 클릭 또는 우클릭으로 펼치기" : "더블 클릭 또는 우클릭으로 이 노드 접기";
-            mobileTopic.setAttribute("aria-label", mobileTopic.title);
-          }
-        });
-      });
+      const childList = mobileList.querySelector('.mobile-topic-list[data-parent-node-id="' + node.id + '"]');
+      if (childList) childList.classList.toggle("is-folded-away", hidden || branchCollapsed || nodeCollapsed);
+      if (hidden || branchCollapsed || nodeCollapsed) hiddenByAncestor.add(node.id);
     });
 
     requestAnimationFrame(drawConnections);
@@ -516,13 +632,10 @@
   function toggleNodeCollapse(id) {
     const node = nodeIndex.get(id);
     if (!node) return;
-    if (id === "home" || node.kind === "category") {
-      if (collapsedBranches.has(id)) collapsedBranches.delete(id);
-      else collapsedBranches.add(id);
-    } else if (node.kind === "topic") {
-      if (collapsedLeaves.has(id)) collapsedLeaves.delete(id);
-      else collapsedLeaves.add(id);
-    }
+    const hasChildren = getNodeChildren(node).length > 0;
+    const collapsedSet = id === "home" || hasChildren ? collapsedBranches : collapsedLeaves;
+    if (collapsedSet.has(id)) collapsedSet.delete(id);
+    else collapsedSet.add(id);
     selectedId = id;
     closeDetail();
     applyCollapseState();
@@ -533,30 +646,18 @@
     const node = nodeIndex.get(id);
     if (!node) return;
     let revealed = false;
-    const parentCategory = node.kind === "topic" ? findCategoryById(node.parentId) : (node.kind === "category" && node.parentId ? findCategoryById(node.parentId) : null);
-    const topLevelCategory = getTopLevelCategory(parentCategory || (node.kind === "category" ? node : null));
-    if (node.kind === "category") {
-      revealed = collapsedBranches.delete("home") || revealed;
-      if (node.parentId) revealed = collapsedBranches.delete(node.parentId) || revealed;
+    let parentId = node.parentId;
+    while (parentId) {
+      revealed = collapsedBranches.delete(parentId) || revealed;
+      const parent = nodeIndex.get(parentId);
+      if (!parent) break;
+      const mobileParent = mobileList.querySelector('.mobile-category[data-category-id="' + parent.id + '"]');
+      if (mobileParent) mobileParent.open = true;
+      parentId = parent.parentId;
     }
-    if (node.kind === "topic") {
-      revealed = collapsedBranches.delete("home") || revealed;
-      revealed = collapsedBranches.delete(node.parentId) || revealed;
-      if (topLevelCategory) revealed = collapsedBranches.delete(topLevelCategory.id) || revealed;
-      revealed = collapsedLeaves.delete(id) || revealed;
-    }
-    if (topLevelCategory) {
-      const mobileTopLevel = mobileList.querySelector('.mobile-category[data-category-id="' + topLevelCategory.id + '"]');
-      if (mobileTopLevel) mobileTopLevel.open = true;
-      if (parentCategory && parentCategory.id !== topLevelCategory.id) {
-        const mobileParentCategory = mobileList.querySelector('.mobile-category[data-category-id="' + parentCategory.id + '"]');
-        if (mobileParentCategory) mobileParentCategory.open = true;
-      }
-      if (node.kind === "category" && node.id !== topLevelCategory.id) {
-        const mobileSelectedCategory = mobileList.querySelector('.mobile-category[data-category-id="' + node.id + '"]');
-        if (mobileSelectedCategory) mobileSelectedCategory.open = true;
-      }
-    }
+    revealed = collapsedLeaves.delete(id) || revealed;
+    const mobileSelectedCategory = mobileList.querySelector('.mobile-category[data-category-id="' + id + '"]');
+    if (mobileSelectedCategory) mobileSelectedCategory.open = true;
     if (revealed) applyCollapseState();
     selectedId = id;
     updateActiveNodeClasses(node);
@@ -573,26 +674,12 @@
     detailCard.setAttribute("aria-hidden", "true");
   }
 
-  function findCategoryById(id) {
-    for (const category of info.categories) {
-      if (category.id === id) return category;
-      const subcategory = (category.subcategories || []).find(function (item) { return item.id === id; });
-      if (subcategory) return subcategory;
-    }
-    return null;
-  }
-
-  function getTopLevelCategory(category) {
-    if (!category) return null;
-    return category.parentId ? findCategoryById(category.parentId) : category;
-  }
-
   function updateActiveNodeClasses(node) {
     const parentIds = new Set();
-    if (node.kind === "category" && node.parentId) parentIds.add(node.parentId);
-    if (node.kind === "topic") {
-      if (node.parentId) parentIds.add(node.parentId);
-      if (node.topLevelParentId) parentIds.add(node.topLevelParentId);
+    let parent = node;
+    while (parent && parent.parentId) {
+      parentIds.add(parent.parentId);
+      parent = nodeIndex.get(parent.parentId);
     }
     document.querySelectorAll(".map-node[data-node-id]").forEach(function (button) {
       const active = button.dataset.nodeId === node.id;
@@ -605,8 +692,6 @@
 
   function updateDetail(node) {
     const isRoot = node.id === "home";
-    const category = node.kind === "topic" ? findCategoryById(node.parentId) : (node.kind === "category" ? node : null);
-    const topLevelCategory = getTopLevelCategory(category);
     const title = document.getElementById("detail-title");
     const summary = document.getElementById("detail-summary");
     const breadcrumb = document.getElementById("breadcrumb");
@@ -614,6 +699,8 @@
     const content = document.getElementById("detail-content");
     const source = document.getElementById("detail-source");
     const updated = document.getElementById("detail-updated");
+    const path = getNodePath(node);
+    const children = getNodeChildren(node);
 
     title.textContent = node.title;
     summary.textContent = node.summary || "확인된 안내를 출처와 함께 정리해 주세요.";
@@ -622,41 +709,30 @@
     const homeCrumb = document.createElement("span");
     homeCrumb.textContent = "정보 지도";
     breadcrumb.appendChild(homeCrumb);
-    if (isRoot) {
+    (isRoot ? [{ title: "홈" }] : path).forEach(function (crumb) {
       const slash = document.createElement("span");
       slash.textContent = "/";
-      const crumb = document.createElement("span");
-      crumb.textContent = "홈";
-      breadcrumb.append(slash, crumb);
-    } else {
-      const crumbs = [];
-      if (topLevelCategory) crumbs.push(topLevelCategory);
-      if (category && topLevelCategory && category.id !== topLevelCategory.id) crumbs.push(category);
-      if (node.kind === "topic") crumbs.push(node);
-      crumbs.forEach(function (crumb) {
-        const slash = document.createElement("span");
-        slash.textContent = "/";
-        const crumbLabel = document.createElement("span");
-        crumbLabel.textContent = crumb.title;
-        breadcrumb.append(slash, crumbLabel);
-      });
-    }
+      const crumbLabel = document.createElement("span");
+      crumbLabel.textContent = crumb.title;
+      breadcrumb.append(slash, crumbLabel);
+    });
 
     content.replaceChildren();
-    if (node.kind === "topic") {
-      addContentBlock(content, "등록할 내용", node.guidance || "확인된 안내를 여기에 추가해 주세요.");
-    } else {
+    if (isRoot || node.kind === "category") {
       const description = document.createElement("p");
       description.className = "detail-description";
       description.textContent = node.overview || node.summary;
       content.appendChild(description);
+    } else {
+      addContentBlock(content, "안내", node.guidance || "확인된 안내와 출처를 여기에 추가해 주세요.");
+    }
+    if (children.length) {
       const heading = document.createElement("div");
       heading.className = "content-label";
-      heading.textContent = isRoot ? "정보 주제" : "이 가지의 정보";
+      heading.textContent = isRoot ? "정보 주제" : "하위 정보";
       content.appendChild(heading);
       const items = document.createElement("div");
       items.className = "detail-topic-list";
-      const children = isRoot ? info.categories : node.topics.concat(node.subcategories || []);
       children.forEach(function (child) {
         const item = document.createElement("button");
         item.type = "button";
@@ -673,10 +749,8 @@
       content.appendChild(items);
     }
 
-    const sourceOwners = isRoot ? [] : [node.kind === "topic" ? node : null, category, topLevelCategory].filter(function (owner, index, owners) {
-      return owner && owners.indexOf(owner) === index;
-    });
     let sourceEntries = [];
+    const sourceOwners = path.slice().reverse();
     for (const owner of sourceOwners) {
       if (Array.isArray(owner.sources) && owner.sources.length) { sourceEntries = owner.sources; break; }
       if (owner.sourceUrl) { sourceEntries = [{ label: "출처 페이지", url: owner.sourceUrl }]; break; }
@@ -699,8 +773,9 @@
     } else {
       source.textContent = "공식 자료를 확인한 뒤 링크를 추가해 주세요.";
     }
-    updated.textContent = (!isRoot && node.updatedAt) || (category && category.updatedAt) || (topLevelCategory && topLevelCategory.updatedAt) || info.updatedAt || "등록 전";
+    updated.textContent = (!isRoot && node.updatedAt) || path.slice().reverse().map(function (item) { return item.updatedAt; }).find(Boolean) || info.updatedAt || "등록 전";
     resetArticleEditor();
+    resetChildNodeEditor();
     loadArticles(node.id);
   }
 
@@ -885,6 +960,14 @@
     if (writerTools) writerTools.hidden = !isWriter;
   }
 
+  function resetChildNodeEditor() {
+    if (!childNodeForm) return;
+    childNodeForm.reset();
+    childNodeForm.hidden = true;
+    childNodeParentId = null;
+    if (writerTools) writerTools.hidden = !isWriter;
+  }
+
   function openArticleEditor(article) {
     if (!currentUser) {
       showToast("글을 쓰려면 Google 로그인을 해 주세요.");
@@ -894,6 +977,7 @@
       showToast("관리자가 글쓰기를 허용한 기간에만 작성할 수 있어요.");
       return;
     }
+    resetChildNodeEditor();
     editingArticleId = article ? article.id : null;
     document.getElementById("article-title").value = article ? article.title : "";
     document.getElementById("article-body").value = article ? article.body : "";
@@ -902,6 +986,53 @@
     writerTools.hidden = true;
     articleForm.hidden = false;
     document.getElementById("article-title").focus();
+  }
+
+  function openChildNodeEditor() {
+    if (!currentUser) {
+      showToast("하위 노드를 추가하려면 Google 로그인을 해 주세요.");
+      return;
+    }
+    if (!isWriter) {
+      showToast("관리자가 글쓰기를 허용한 기간에만 하위 노드를 추가할 수 있어요.");
+      return;
+    }
+    const parent = nodeIndex.get(selectedId);
+    if (!parent) return;
+    resetArticleEditor();
+    childNodeParentId = parent.id;
+    childNodeParentLabel.textContent = "상위 노드: " + parent.title;
+    writerTools.hidden = true;
+    childNodeForm.hidden = false;
+    document.getElementById("child-node-title").focus();
+  }
+
+  async function loadCustomMapNodes(preferredSelectionId) {
+    if (!supabaseClient) return false;
+    const loadToken = ++customNodeLoadToken;
+    const result = await supabaseClient
+      .from("school_map_nodes")
+      .select("id,parent_node_id,title,summary,guidance,source_url,author_id,created_at")
+      .order("created_at", { ascending: true });
+    if (loadToken !== customNodeLoadToken) return false;
+    if (result.error) {
+      customMapNodes = [];
+      renderTree();
+      applyCollapseState();
+      const nextId = nodeIndex.has(selectedId) ? selectedId : "home";
+      selectNode(nextId);
+      const missingTable = result.error.code === "42P01" || result.error.code === "PGRST205";
+      if (!missingTable) showToast("추가 노드를 불러오지 못했어요. Supabase 권한을 확인해 주세요.");
+      return false;
+    }
+    customMapNodes = result.data || [];
+    renderTree();
+    applyCollapseState();
+    const nextId = preferredSelectionId && nodeIndex.has(preferredSelectionId)
+      ? preferredSelectionId
+      : (nodeIndex.has(selectedId) ? selectedId : "home");
+    selectNode(nextId);
+    return true;
   }
 
   function applyWritingSettings(settings) {
@@ -979,6 +1110,8 @@
     if (!isWriter) {
       articleForm.hidden = true;
       editingArticleId = null;
+      childNodeForm.hidden = true;
+      childNodeParentId = null;
     }
     if (!user && adminSettingsDialog.open) adminSettingsDialog.close();
   }
@@ -992,7 +1125,8 @@
       writingIsOpen = false;
       writingSettings = null;
       setSignedInUser(null, false, false);
-      loadArticles(selectedId);
+      await loadCustomMapNodes();
+      if (token !== authStateToken) return;
       return;
     }
     const results = await Promise.all([
@@ -1005,10 +1139,11 @@
     writingIsOpen = !results[1].error && results[1].data === true;
     isGoogleUser = !results[2].error && results[2].data === true;
     setSignedInUser(user, writingIsOpen && isGoogleUser, isAdmin);
+    await loadCustomMapNodes();
+    if (token !== authStateToken) return;
     if (results[0].error || results[1].error || results[2].error) showToast("로그인은 됐지만 글쓰기 상태를 확인하지 못했어요.");
     else if (!isGoogleUser) showToast("글을 쓰려면 Google 계정으로 로그인해 주세요.");
     else if (!writingIsOpen) showToast("로그인했어요. 현재 글쓰기 기간은 닫혀 있어요.");
-    loadArticles(selectedId);
   }
 
   async function refreshWritingAvailability() {
@@ -1090,6 +1225,55 @@
 
   newArticleButton.addEventListener("click", function () { openArticleEditor(null); });
   document.getElementById("cancel-article-button").addEventListener("click", resetArticleEditor);
+  newChildNodeButton.addEventListener("click", openChildNodeEditor);
+  document.getElementById("cancel-child-node-button").addEventListener("click", resetChildNodeEditor);
+  childNodeForm.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    if (!currentUser) {
+      showToast("하위 노드를 추가하려면 Google 로그인을 해 주세요.");
+      return;
+    }
+    if (!isWriter) {
+      showToast("관리자가 글쓰기를 허용한 기간에만 하위 노드를 추가할 수 있어요.");
+      return;
+    }
+    if (!supabaseClient || !childNodeParentId) return;
+    const title = document.getElementById("child-node-title").value.trim();
+    const summary = document.getElementById("child-node-summary").value.trim();
+    const guidance = document.getElementById("child-node-guidance").value.trim();
+    const source = document.getElementById("child-node-source").value.trim();
+    const sourceUrl = source ? safeHttpUrl(source) : null;
+    if (!title || !summary) {
+      showToast("하위 노드 이름과 짧은 설명을 입력해 주세요.");
+      return;
+    }
+    if (source && !sourceUrl) {
+      showToast("출처 링크는 http 또는 https 주소를 입력해 주세요.");
+      return;
+    }
+    const payload = {
+      parent_node_id: childNodeParentId,
+      title: title,
+      summary: summary,
+      guidance: guidance,
+      source_url: sourceUrl
+    };
+    const saveButton = childNodeForm.querySelector('[type="submit"]');
+    saveButton.disabled = true;
+    const result = await supabaseClient.from("school_map_nodes").insert(payload).select("id").single();
+    saveButton.disabled = false;
+    if (result.error) {
+      const missingTable = result.error.code === "42P01" || result.error.code === "PGRST205";
+      if (missingTable) showToast("하위 노드 테이블이 아직 없어요. Supabase SQL Editor에서 20261112_add_school_map_nodes.sql을 실행해 주세요.");
+      else if (result.error.code === "42501") showToast("작성 기간이 닫혔거나 하위 노드를 추가할 권한이 없어요.");
+      else showToast("하위 노드를 저장하지 못했어요. 상위 노드와 Supabase 설정을 확인해 주세요.");
+      return;
+    }
+    childNodeForm.hidden = true;
+    childNodeParentId = null;
+    showToast("하위 노드를 추가했어요.");
+    await loadCustomMapNodes(result.data && result.data.id);
+  });
   articleForm.addEventListener("submit", async function (event) {
     event.preventDefault();
     if (!currentUser) {
@@ -1172,17 +1356,14 @@
 
   function getSearchableNodes() {
     const results = [];
-    info.categories.forEach(function (category) {
-      results.push({ node: category, category: category.title, searchable: category.title + " " + category.subtitle + " " + category.summary });
-      category.topics.forEach(function (topic) {
-        results.push({ node: topic, category: category.title, searchable: topic.title + " " + topic.summary + " " + category.title });
-      });
-      (category.subcategories || []).forEach(function (subcategory) {
-        const path = category.title + " · " + subcategory.title;
-        results.push({ node: subcategory, category: path, searchable: subcategory.title + " " + subcategory.subtitle + " " + subcategory.summary + " " + category.title });
-        subcategory.topics.forEach(function (topic) {
-          results.push({ node: topic, category: path, searchable: topic.title + " " + topic.summary + " " + path });
-        });
+    nodeIndex.forEach(function (node) {
+      if (node.id === "home") return;
+      const path = getNodePath(node);
+      const pathLabel = path.map(function (item) { return item.title; }).join(" · ");
+      results.push({
+        node: node,
+        category: pathLabel,
+        searchable: [node.title, node.subtitle, node.summary, node.guidance, pathLabel].filter(Boolean).join(" ")
       });
     });
     return results;
@@ -1197,9 +1378,7 @@
     const matches = query ? searchable.filter(function (entry) { return entry.searchable.toLocaleLowerCase("ko").includes(query); }) : [];
     const matchingIds = new Set();
     matches.forEach(function (entry) {
-      matchingIds.add(entry.node.id);
-      if (entry.node.parentId) matchingIds.add(entry.node.parentId);
-      if (entry.node.topLevelParentId) matchingIds.add(entry.node.topLevelParentId);
+      getNodePath(entry.node).forEach(function (node) { matchingIds.add(node.id); });
     });
 
     document.querySelectorAll(".map-node[data-node-id]").forEach(function (button) {

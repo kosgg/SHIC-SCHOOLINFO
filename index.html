@@ -100,7 +100,24 @@
               <p class="writing-status" id="writing-status" hidden></p>
               <div class="writer-tools" id="writer-tools" hidden>
                 <button class="new-article-button" id="new-article-button" type="button">＋ 이 주제에 글 쓰기</button>
+                <button class="new-article-button new-child-node-button" id="new-child-node-button" type="button">＋ 하위 노드 추가</button>
               </div>
+              <form class="article-form child-node-form" id="child-node-form" hidden>
+                <p class="child-node-parent-label" id="child-node-parent-label"></p>
+                <label for="child-node-title">하위 노드 이름</label>
+                <input id="child-node-title" name="title" maxlength="100" required>
+                <label for="child-node-summary">짧은 설명</label>
+                <input id="child-node-summary" name="summary" maxlength="180" required>
+                <label for="child-node-guidance">상세 안내 <span>(선택)</span></label>
+                <textarea id="child-node-guidance" name="guidance" rows="4" maxlength="10000"></textarea>
+                <label for="child-node-source">출처 링크 <span>(선택)</span></label>
+                <input id="child-node-source" name="source_url" type="url" placeholder="https://...">
+                <p class="child-node-note">작성 허용 기간에 저장하면 모든 방문자에게 바로 공개돼요.</p>
+                <div class="article-form-actions">
+                  <button class="save-article-button" type="submit">하위 노드 저장</button>
+                  <button id="cancel-child-node-button" type="button">취소</button>
+                </div>
+              </form>
               <form class="article-form" id="article-form" hidden>
                 <label for="article-title">제목</label>
                 <input id="article-title" name="title" maxlength="160" required>
