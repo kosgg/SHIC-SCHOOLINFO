@@ -53,6 +53,7 @@
   const nodeChildren = new Map();
   const collapsedBranches = new Set();
   const collapsedLeaves = new Set();
+  const knownBranchNodeIds = new Set();
   const pendingClicks = new Map();
   let selectedId = rootNode.id;
   let supabaseClient = null;
@@ -78,6 +79,7 @@
   let mapPanOffsetX = 0;
   let mapPanOffsetY = 0;
   let mapPan = null;
+  let mapInitialPositioned = false;
   let suppressedDragClick = null;
   let suppressedDragClickTimer = null;
 
@@ -106,47 +108,21 @@
     caption.textContent = node.subtitle || node.summary;
     copy.append(title, caption);
     button.appendChild(copy);
+    const childCount = getNodeChildren(node).length;
+    if (childCount) {
+      const count = document.createElement("span");
+      count.className = "node-child-count";
+      count.textContent = "+" + childCount;
+      count.setAttribute("aria-hidden", "true");
+      button.appendChild(count);
+      button.classList.add("has-node-children");
+    }
     return button;
   }
 
   function placeNode(element, coordinates) {
     element.style.left = coordinates[0] + "px";
     element.style.top = coordinates[1] + "px";
-  }
-
-  function graphPositions(width, height) {
-    const centerX = width / 2;
-    const centerY = height / 2 + 20;
-    const categoryOffset = Math.min(400, Math.max(163, width * 0.23));
-    const sideLeafOffset = Math.min(180, Math.max(65, width * 0.1));
-    const categoryVerticalOffset = Math.min(260, Math.max(100, height * 0.25));
-    const outerVerticalOffset = Math.min(380, Math.max(160, height * 0.32));
-    const sideVerticalOffset = Math.min(180, Math.max(80, height * 0.16));
-    const rowPositions = function (count, y) {
-      return Array.from({ length: count }, function (_, index) { return [width * (index + 1) / (count + 1), y]; });
-    };
-    const schoolCategory = info.categories.find(function (item) { return item.id === "school"; });
-    const facilityCategory = (schoolCategory.subcategories || []).find(function (item) { return item.id === "facilities"; });
-    const facilityX = centerX - categoryOffset * 0.72;
-    const facilityY = centerY - 40;
-    return {
-      school: {
-        category: [centerX, centerY - categoryVerticalOffset],
-        topics: rowPositions(schoolCategory.topics.length, centerY - outerVerticalOffset),
-        subcategories: {
-          facilities: {
-            category: [facilityX, facilityY],
-            topics: Array.from({ length: facilityCategory.topics.length }, function (_, index) {
-              const spacing = Math.max(78, Math.min(126, 500 / Math.max(1, facilityCategory.topics.length - 1)));
-              return [Math.max(82, centerX - categoryOffset * 1.45), facilityY + (index - (facilityCategory.topics.length - 1) / 2) * spacing];
-            })
-          }
-        }
-      },
-      calendar: { category: [centerX + categoryOffset, centerY], topics: [[width - sideLeafOffset, centerY - sideVerticalOffset], [width - sideLeafOffset, centerY], [width - sideLeafOffset, centerY + sideVerticalOffset]] },
-      activities: { category: [centerX, centerY + categoryVerticalOffset], topics: rowPositions(info.categories.find(function (item) { return item.id === "activities"; }).topics.length, centerY + outerVerticalOffset) },
-      home: { root: [centerX, centerY] }
-    };
   }
 
   function syncMapZoomLayout() {
@@ -192,6 +168,8 @@
     if (!nodeIndex.has(parentId)) return false;
     node.kind = kind;
     node.parentId = parentId;
+    const parent = nodeIndex.get(parentId);
+    if (node.branchAngle == null) node.branchAngle = parent.branchAngle == null ? -Math.PI / 2 : parent.branchAngle;
     nodeIndex.set(node.id, node);
     if (!nodeChildren.has(node.id)) nodeChildren.set(node.id, []);
     if (!nodeChildren.has(parentId)) nodeChildren.set(parentId, []);
@@ -204,8 +182,10 @@
     nodeChildren.clear();
     nodeIndex.set(rootNode.id, rootNode);
     nodeChildren.set(rootNode.id, []);
+    const categoryAngles = { school: -Math.PI / 2, calendar: Math.PI * 0.75, activities: Math.PI * 0.25 };
     info.categories.forEach(function (category) {
       category.topLevelParentId = category.id;
+      category.branchAngle = categoryAngles[category.id] == null ? -Math.PI / 2 : categoryAngles[category.id];
       addNodeToTree(category, rootNode.id, "category");
       category.topics.forEach(function (topic, index) {
         topic.number = category.number + "." + String(index + 1).padStart(2, "0");
@@ -269,126 +249,95 @@
   }
 
   function updateGraphLayout() {
-    const maxDepth = customMapNodes.reduce(function (max, row) {
-      let depth = 0;
-      let current = nodeIndex.get(row.parent_node_id);
-      while (current && current.id !== "home") {
-        depth += 1;
-        current = nodeIndex.get(current.parentId);
-      }
-      return Math.max(max, depth + 1);
-    }, 0);
-    const largestCustomBranch = Array.from(nodeChildren.values()).reduce(function (max, children) {
-      return Math.max(max, children.filter(function (child) { return child.custom; }).length);
-    }, 0);
-    const baseWidth = Math.min(1800, Math.max(1200, mapViewport.clientWidth));
-    const baseHeight = Math.max(1000, mapViewport.clientHeight);
-    const reserveWidth = maxDepth * 500;
-    const reserveHeight = maxDepth * 100 + Math.max(0, largestCustomBranch - 1) * 84;
-    mapBaseWidth = baseWidth + reserveWidth;
-    mapBaseHeight = baseHeight + reserveHeight;
+    const previousRootOffsetX = mapContentMarginLeft + mapZoomOffsetX + mapPanOffsetX + mapBaseWidth * mapZoom / 2;
+    const previousRootOffsetY = mapZoomOffsetY + mapPanOffsetY + mapBaseHeight * mapZoom / 2;
+    const positions = new Map([["home", [0, 0]]]);
+    const dimensions = new Map();
+    const getDimensions = function (node) {
+      if (dimensions.has(node.id)) return dimensions.get(node.id);
+      const button = node.id === "home"
+        ? mapStage.querySelector('[data-node-id="home"]')
+        : branchesLayer.querySelector('[data-node-id="' + node.id + '"]');
+      const size = { width: button ? button.offsetWidth : (node.kind === "category" ? 190 : 156), height: button ? button.offsetHeight : (node.kind === "category" ? 70 : 48) };
+      dimensions.set(node.id, size);
+      return size;
+    };
+    const setChildrenAlongBranch = function (parent) {
+      const children = getNodeChildren(parent);
+      if (!children.length) return;
+      const parentPoint = positions.get(parent.id);
+      const distance = parent.id === "home" ? 295 : (parent.kind === "category" ? 255 : 225);
+      const siblingGap = 190;
+      children.forEach(function (child, index) {
+        const angle = parent.id === "home"
+          ? (child.branchAngle == null ? -Math.PI / 2 : child.branchAngle)
+          : (parent.branchAngle == null ? -Math.PI / 2 : parent.branchAngle);
+        const directionX = Math.cos(angle);
+        const directionY = Math.sin(angle);
+        const normalX = -directionY;
+        const normalY = directionX;
+        child.branchAngle = angle;
+        const siblingOffset = parent.id === "home" ? 0 : (index - (children.length - 1) / 2) * siblingGap;
+        positions.set(child.id, [
+          parentPoint[0] + directionX * distance + normalX * siblingOffset,
+          parentPoint[1] + directionY * distance + normalY * siblingOffset
+        ]);
+        setChildrenAlongBranch(child);
+      });
+    };
+    setChildrenAlongBranch(rootNode);
+
+    let extentX = 77;
+    let extentY = 77;
+    positions.forEach(function (point, id) {
+      const node = nodeIndex.get(id);
+      const size = getDimensions(node);
+      extentX = Math.max(extentX, Math.abs(point[0]) + size.width / 2);
+      extentY = Math.max(extentY, Math.abs(point[1]) + size.height / 2);
+    });
+    const padding = 180;
+    mapBaseWidth = Math.max(1200, mapViewport.clientWidth, Math.ceil((extentX + padding) * 2));
+    mapBaseHeight = Math.max(1000, mapViewport.clientHeight, Math.ceil((extentY + padding) * 2));
     mapStage.style.width = mapBaseWidth + "px";
     mapStage.style.minWidth = mapBaseWidth + "px";
     mapStage.style.height = mapBaseHeight + "px";
     syncMapZoomLayout();
 
-    const layout = graphPositions(mapBaseWidth, mapBaseHeight);
-    const shiftX = reserveWidth / 2;
-    const shiftY = reserveHeight / 2;
-    const positions = new Map();
-    const shifted = function (point) { return [point[0] - shiftX, point[1] - shiftY]; };
-    positions.set("home", shifted(layout.home.root));
-    const rootButton = mapStage.querySelector('[data-node-id="home"]');
-    if (rootButton) placeNode(rootButton, positions.get("home"));
-    info.categories.forEach(function (category) {
-      const categoryPoint = shifted(layout[category.id].category);
-      positions.set(category.id, categoryPoint);
-      const categoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + category.id + '"]');
-      if (categoryButton) placeNode(categoryButton, categoryPoint);
-      category.topics.forEach(function (topic, index) {
-        const point = shifted(layout[category.id].topics[index]);
-        positions.set(topic.id, point);
-        const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
-        if (topicButton) placeNode(topicButton, point);
-      });
-      (category.subcategories || []).forEach(function (subcategory) {
-        const subcategoryLayout = layout[category.id].subcategories[subcategory.id];
-        const subcategoryPoint = shifted(subcategoryLayout.category);
-        positions.set(subcategory.id, subcategoryPoint);
-        const subcategoryButton = branchesLayer.querySelector('.category-node[data-node-id="' + subcategory.id + '"]');
-        if (subcategoryButton) placeNode(subcategoryButton, subcategoryPoint);
-        subcategory.topics.forEach(function (topic, index) {
-          const point = shifted(subcategoryLayout.topics[index]);
-          positions.set(topic.id, point);
-          const topicButton = branchesLayer.querySelector('.topic-node[data-node-id="' + topic.id + '"]');
-          if (topicButton) placeNode(topicButton, point);
-        });
-      });
+    const centerX = mapBaseWidth / 2;
+    const centerY = mapBaseHeight / 2;
+    if (mapInitialPositioned) {
+      const nextRootOffsetX = mapContentMarginLeft + mapZoomOffsetX + mapPanOffsetX + centerX * mapZoom;
+      const nextRootOffsetY = mapZoomOffsetY + mapPanOffsetY + centerY * mapZoom;
+      mapViewport.scrollLeft += nextRootOffsetX - previousRootOffsetX;
+      mapViewport.scrollTop += nextRootOffsetY - previousRootOffsetY;
+    }
+    positions.forEach(function (point, id) {
+      const element = id === "home"
+        ? mapStage.querySelector('[data-node-id="home"]')
+        : branchesLayer.querySelector('[data-node-id="' + id + '"]');
+      if (element) placeNode(element, [centerX + point[0], centerY + point[1]]);
     });
 
-    function pointIsAvailable(point, nodeId) {
-      const button = branchesLayer.querySelector('[data-node-id="' + nodeId + '"]');
-      const width = button ? button.offsetWidth : 126;
-      const height = button ? button.offsetHeight : 48;
-      if (point[0] < width / 2 + 20 || point[0] > mapBaseWidth - width / 2 - 20) return false;
-      if (point[1] < height / 2 + 20 || point[1] > mapBaseHeight - height / 2 - 20) return false;
-      let available = true;
-      positions.forEach(function (otherPoint, otherId) {
-        if (!available || otherId === nodeId) return;
-        const other = branchesLayer.querySelector('[data-node-id="' + otherId + '"]') || mapStage.querySelector('[data-node-id="' + otherId + '"]');
-        const otherWidth = other ? other.offsetWidth : 126;
-        const otherHeight = other ? other.offsetHeight : 48;
-        if (Math.abs(point[0] - otherPoint[0]) < (width + otherWidth) / 2 + 14
-          && Math.abs(point[1] - otherPoint[1]) < (height + otherHeight) / 2 + 14) available = false;
-      });
-      return available;
-    }
-
-    function placeCustomChildren(parentId, visited) {
-      if (visited.has(parentId)) return;
-      visited.add(parentId);
-      const children = getNodeChildren(parentId).filter(function (node) { return node.custom; });
-      const parentPoint = positions.get(parentId);
-      if (!parentPoint) return;
-      children.forEach(function (node, index) {
-        const fanOffset = (index - (children.length - 1) / 2) * 86;
-        const directions = [
-          [1, 0, 0, 1], [0, 1, -1, 0], [0, -1, 1, 0], [-1, 0, 0, -1]
-        ];
-        let point = null;
-        for (const distance of [190, 250, 310, 370]) {
-          for (const direction of directions) {
-            const candidate = [
-              parentPoint[0] + direction[0] * distance + direction[2] * fanOffset,
-              parentPoint[1] + direction[1] * distance + direction[3] * fanOffset
-            ];
-            if (pointIsAvailable(candidate, node.id)) {
-              point = candidate;
-              break;
-            }
-          }
-          if (point) break;
-        }
-        if (!point) point = [parentPoint[0] + 190, parentPoint[1] + fanOffset];
-        positions.set(node.id, point);
-        const button = branchesLayer.querySelector('.topic-node[data-node-id="' + node.id + '"]');
-        if (button) placeNode(button, point);
-        placeCustomChildren(node.id, visited);
+    if (!mapInitialPositioned && mapViewport.clientWidth && mapViewport.clientHeight) {
+      mapInitialPositioned = true;
+      requestAnimationFrame(function () {
+        mapViewport.scrollLeft = Math.max(0, mapContentMarginLeft + mapZoomOffsetX + centerX * mapZoom - mapViewport.clientWidth / 2);
+        mapViewport.scrollTop = Math.max(0, mapZoomOffsetY + centerY * mapZoom - mapViewport.clientHeight / 2);
+        drawConnections();
       });
     }
-    placeCustomChildren("home", new Set());
-    info.categories.forEach(function (category) {
-      placeCustomChildren(category.id, new Set());
-      (category.subcategories || []).forEach(function (subcategory) {
-        placeCustomChildren(subcategory.id, new Set());
-        subcategory.topics.forEach(function (topic) { placeCustomChildren(topic.id, new Set()); });
-      });
-      category.topics.forEach(function (topic) { placeCustomChildren(topic.id, new Set()); });
-    });
   }
 
   function renderTree() {
     buildNodeTree();
+    nodeIndex.forEach(function (node) {
+      if (node.id !== "home" && getNodeChildren(node).length && !knownBranchNodeIds.has(node.id)) {
+        collapsedBranches.add(node.id);
+      }
+    });
+    nodeIndex.forEach(function (node) {
+      if (node.id !== "home" && getNodeChildren(node).length) knownBranchNodeIds.add(node.id);
+    });
     branchesLayer.replaceChildren();
     mobileList.replaceChildren();
 
@@ -422,8 +371,8 @@
       getNodeChildren(node).forEach(renderDesktopNode);
     }
     getNodeChildren("home").forEach(renderDesktopNode);
-    getNodeChildren("home").forEach(function (category, index) {
-      renderMobileCategory(category, index === 0, mobileList);
+    getNodeChildren("home").forEach(function (category) {
+      renderMobileCategory(category, false, mobileList);
     });
 
     updateGraphLayout();
@@ -444,7 +393,15 @@
     const arrow = document.createElement("span");
     arrow.setAttribute("aria-hidden", "true");
     arrow.textContent = "↗";
-    button.append(title, arrow);
+    button.append(title);
+    const childCount = getNodeChildren(node).length;
+    if (childCount) {
+      const count = document.createElement("span");
+      count.className = "mobile-child-count";
+      count.textContent = "+" + childCount;
+      button.appendChild(count);
+    }
+    button.appendChild(arrow);
     parentContainer.appendChild(button);
     const children = getNodeChildren(node);
     if (children.length) {
@@ -461,6 +418,12 @@
     details.className = "mobile-category";
     details.dataset.categoryId = category.id;
     if (expanded) details.open = true;
+    details.addEventListener("toggle", function () {
+      if (!getNodeChildren(category).length) return;
+      if (details.open) collapsedBranches.delete(category.id);
+      else collapsedBranches.add(category.id);
+      applyCollapseState();
+    });
     const summary = document.createElement("summary");
     const number = document.createElement("span");
     number.className = "mobile-category-number";
@@ -472,11 +435,14 @@
     const subtitle = document.createElement("span");
     subtitle.textContent = category.subtitle || category.summary;
     categoryCopy.append(title, subtitle);
+    const childCount = document.createElement("span");
+    childCount.className = "mobile-child-count";
+    childCount.textContent = "+" + getNodeChildren(category).length;
     const chevron = document.createElement("span");
     chevron.className = "mobile-chevron";
     chevron.setAttribute("aria-hidden", "true");
     chevron.textContent = "⌄";
-    summary.append(number, categoryCopy, chevron);
+    summary.append(number, categoryCopy, childCount, chevron);
     details.appendChild(summary);
     details.appendChild(makeNodeButton(category, "mobile-category-overview"));
 
@@ -602,6 +568,7 @@
       if (mobileCategory) {
         mobileCategory.classList.toggle("is-folded-away", hidden);
         mobileCategory.classList.toggle("is-branch-collapsed", branchCollapsed);
+        mobileCategory.open = !hidden && !branchCollapsed;
       }
       const childList = mobileList.querySelector('.mobile-topic-list[data-parent-node-id="' + node.id + '"]');
       if (childList) childList.classList.toggle("is-folded-away", hidden || branchCollapsed || nodeCollapsed);
